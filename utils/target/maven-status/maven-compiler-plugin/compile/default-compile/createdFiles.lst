@@ -1,0 +1,5 @@
+com/github/kkomitski/opal/utils/MarketsLoader.class
+com/github/kkomitski/opal/Main.class
+com/github/kkomitski/opal/utils/OrderRequestDecoder.class
+com/github/kkomitski/opal/utils/MatchEventDecoder.class
+com/github/kkomitski/opal/utils/Market.class

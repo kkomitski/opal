@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<markets>
+  <market>
+    <symbol>MSFT</symbol>
+    <price>37210</price>
+    <limits_per_level>20</limits_per_level>
+    <orders_per_limit>1200</orders_per_limit>
+  </market>
+</markets>
