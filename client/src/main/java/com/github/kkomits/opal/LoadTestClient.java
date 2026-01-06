@@ -32,9 +32,8 @@ public class LoadTestClient {
 
     // --- CONFIGURATION HANDLES ---
 
-    // Maximum price deviation from current price (±ticks). Controls the tick range
-    // to keep orders within engine's price collar. Engine supports ±500 by default.
-    private static final int MAX_PRICE_DEVIATION = 100;
+    // Per-instrument price deviation (set from markets.xml: limitsPerBook / 2)
+    private int[] maxPriceDeviationPerInstrument = null;
 
     // The gap between the best bid and best ask in ticks (simulated)
     private static final int TARGET_SPREAD = 1;
@@ -49,7 +48,7 @@ public class LoadTestClient {
     private static final double CURVE_STEEPNESS_FACTOR = 8.0;
 
     // Probability (0.0 - 1.0) that an order will cross the spread and match immediately
-    private static final double SPREAD_CROSS_PROBABILITY = 0.70;
+    private static final double SPREAD_CROSS_PROBABILITY = 1;
 
     // Probability (0.0 - 1.0) of generating an order far from the current price
     private static final double OUTLIER_PROBABILITY = 0.0;
@@ -74,6 +73,8 @@ public class LoadTestClient {
     private final AtomicInteger orderSideToggle = new AtomicInteger(0);
 
     private Market[] markets = null;
+    // Per-instrument max order quantity (set to ordersPerLimit / 2)
+    private int[] maxOrderQtyPerInstrument = null;
 
     // Shared state to track the "current price" of each instrument across all
     // threads
@@ -98,14 +99,25 @@ public class LoadTestClient {
         // Load markets from URL or file path
         this.markets = MarketsLoader.load(marketsLink);
 
-        // Initialize market state
+        // Initialize market state and per-instrument parameters
         if (this.markets != null && this.markets.length > 0) {
             initMarketState();
+            // Set per-instrument price deviation and max order quantity
+            maxPriceDeviationPerInstrument = new int[markets.length];
+            maxOrderQtyPerInstrument = new int[markets.length];
+            for (int i = 0; i < markets.length; i++) {
+                maxPriceDeviationPerInstrument[i] = Math.max(1, markets[i].limitsPerBook / 2);
+                maxOrderQtyPerInstrument[i] = Math.max(1, markets[i].ordersPerLimit / 2);
+            }
         } else {
             // Fallback for no markets loaded (shouldn't happen with correct usage)
             this.instrumentCurrentPrices = new AtomicInteger[25];
+            maxPriceDeviationPerInstrument = new int[25];
+            maxOrderQtyPerInstrument = new int[25];
             for (int i = 0; i < 25; i++) {
                 this.instrumentCurrentPrices[i] = new AtomicInteger(10000);
+                maxPriceDeviationPerInstrument[i] = 100;
+                maxOrderQtyPerInstrument[i] = 1000;
             }
         }
 
@@ -157,7 +169,7 @@ public class LoadTestClient {
         double sum = 0.0;
         for (int i = 0; i < markets.length; i++) {
             // Weight probability by liquidity depth (more liquid = more activity)
-            sum += (double) markets[i].book_depth * (double) markets[i].level_depth;
+            sum += (double) markets[i].limitsPerBook * (double) markets[i].ordersPerLimit;
             instrumentCumulativeWeights[i] = sum;
 
             // Initialize current price from config
@@ -223,7 +235,7 @@ public class LoadTestClient {
                 return;
             for (int i = 0; i < markets.length; i++) {
                 int currentPrice = instrumentCurrentPrices[i].get();
-                int bookDepth = markets[i].book_depth;
+                int bookDepth = markets[i].limitsPerBook;
 
                 // Random Walk Step
                 double noise = random.nextGaussian() * (bookDepth * 0.01 * VOLATILITY_FACTOR); // 1% of depth * vol
@@ -282,8 +294,12 @@ public class LoadTestClient {
                     : 10000;
 
             Market m = (markets != null && markets.length > instrumentIndex) ? markets[instrumentIndex] : null;
-            int bookDepth = (m != null) ? m.book_depth : 1000;
-            int levelDepth = (m != null) ? m.level_depth : 1000;
+            int bookDepth = (m != null) ? m.limitsPerBook : 1000;
+            int levelDepth = (m != null) ? m.ordersPerLimit : 1000;
+            int maxPriceDeviation = (maxPriceDeviationPerInstrument != null && maxPriceDeviationPerInstrument.length > instrumentIndex)
+                ? maxPriceDeviationPerInstrument[instrumentIndex] : 100;
+            int maxOrderQty = (maxOrderQtyPerInstrument != null && maxOrderQtyPerInstrument.length > instrumentIndex)
+                ? maxOrderQtyPerInstrument[instrumentIndex] : 1000;
 
             // 2. Determine Side (Bid/Ask)
             boolean isBid = orderSideToggle.getAndIncrement() % 2 == 0;
@@ -293,15 +309,14 @@ public class LoadTestClient {
             boolean isOutlier = random.nextDouble() < OUTLIER_PROBABILITY;
             boolean crossSpread = random.nextDouble() < SPREAD_CROSS_PROBABILITY;
 
+
             if (isOutlier) {
-                 // Generate deep OTM order, clamped to MAX_PRICE_DEVIATION
-                 int range = Math.min(MAX_PRICE_DEVIATION, bookDepth * 2);
+                 // Generate deep OTM order, clamped to maxPriceDeviation
+                 int range = Math.min(maxPriceDeviation, bookDepth * 2);
                  int offset = random.nextInt(range) + (int) (range * 0.3);
                  price = isBid ? currentPrice - offset : currentPrice + offset;
             } else if (crossSpread) {
                  // Aggressive order crossing the spread
-                 // With TARGET_SPREAD=1, halfSpread=0.
-                 // We add/subtract 1 to ensure we cross the mid-point significantly
                  if (isBid) {
                      price = currentPrice + 1; 
                  } else {
@@ -309,13 +324,11 @@ public class LoadTestClient {
                  }
             } else {
                  // Passive order - Bell curve centered at the spread
-                 int effectiveDepth = Math.min(MAX_PRICE_DEVIATION, bookDepth);
+                 int effectiveDepth = Math.min(maxPriceDeviation, bookDepth);
                  double sigma = effectiveDepth / CURVE_STEEPNESS_FACTOR;
 
-                 // For TARGET_SPREAD=1, halfSpread=0.
-                 // We distribute starting from currentPrice working outwards
                  double dist = Math.abs(random.nextGaussian()) * sigma;
-                 dist = Math.min(dist, MAX_PRICE_DEVIATION);
+                 dist = Math.min(dist, maxPriceDeviation);
 
                  if (isBid) {
                      price = (int) (currentPrice - dist);
@@ -325,23 +338,20 @@ public class LoadTestClient {
             }
 
             // Final safety clamp relative to Current Price
-            int minPrice = currentPrice - MAX_PRICE_DEVIATION;
-            int maxPrice = currentPrice + MAX_PRICE_DEVIATION;
+            int minPrice = currentPrice - maxPriceDeviation;
+            int maxPrice = currentPrice + maxPriceDeviation;
             price = Math.max(minPrice, Math.min(maxPrice, price));
             
-            // Hard clamp against price collar (assuming 10k start means ±10% safe zone is broad, 
-            // but engine checks limit relative to ITS internal ref price.
-            // We just ensure we don't send negative or zero.)
+            // Hard clamp against price collar
             if (price <= 0)
                 price = 1;
 
             // 4. Determine Quantity (exponential decay from spread)
             double distFromSpread = Math
                     .abs(price - (isBid ? currentPrice - TARGET_SPREAD / 2 : currentPrice + TARGET_SPREAD / 2));
-            double decay = Math.exp(-3.0 * (distFromSpread / MAX_PRICE_DEVIATION));
+            double decay = Math.exp(-3.0 * (distFromSpread / (double) maxPriceDeviation));
 
-            int maxQty = Math.max(1, levelDepth * 10);
-            int baseQty = (int) (maxQty * decay);
+            int baseQty = (int) (maxOrderQty * decay);
 
             int quantityInt = Math.max(1, (int) (baseQty * (0.5 + random.nextDouble())));
             short quantity = (short) Math.min(32767, quantityInt);

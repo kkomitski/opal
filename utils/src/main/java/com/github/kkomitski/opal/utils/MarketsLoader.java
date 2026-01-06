@@ -44,9 +44,9 @@ public class MarketsLoader {
                     Element elem = (Element) node;
                     String symbol = elem.getElementsByTagName("symbol").item(0).getTextContent();
                     int price = Integer.parseInt(elem.getElementsByTagName("price").item(0).getTextContent());
-                    int bookDepth = Integer.parseInt(elem.getElementsByTagName("book_depth").item(0).getTextContent());
-                    int levelDepth = Integer.parseInt(elem.getElementsByTagName("level_depth").item(0).getTextContent());
-                    markets.add(new Market(symbol, price, bookDepth, levelDepth));
+                    int limitsPerBook = Integer.parseInt(elem.getElementsByTagName("limits_per_book").item(0).getTextContent());
+                    int ordersPerLimit = Integer.parseInt(elem.getElementsByTagName("orders_per_limit").item(0).getTextContent());
+                    markets.add(new Market(symbol, price, limitsPerBook, ordersPerLimit));
                 }
             }
             inputStream.close();

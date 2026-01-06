@@ -38,7 +38,7 @@ public class StaticRequestsBuilder {
             instrumentCumulativeWeights = new double[markets.length];
             double sum = 0.0;
             for (int i = 0; i < markets.length; i++) {
-                sum += (double) markets[i].book_depth * (double) markets[i].level_depth;
+                sum += (double) markets[i].limitsPerBook * (double) markets[i].ordersPerLimit;
                 instrumentCumulativeWeights[i] = sum;
             }
             totalWeight = sum;
@@ -64,7 +64,7 @@ public class StaticRequestsBuilder {
         final double CLIENT_VOLATILITY_SCALE = 1.0; // Scale factor for client's Gaussian distribution
         final int PRICE_BIAS = 0;
 
-        // Weighted random selection of instrument index based on book_depth * level_depth
+        // Weighted random selection of instrument index based on limitsPerBook * ordersPerLimit
         int instrumentIndex;
         if (markets != null && markets.length > 0 && instrumentCumulativeWeights != null) {
             double r = random.nextDouble() * totalWeight;
@@ -86,9 +86,9 @@ public class StaticRequestsBuilder {
             : getSymbolForIndex(instrumentIndex);
         int basePrice = markets != null && markets.length > instrumentIndex ? markets[instrumentIndex].price
             : 10000;
-        int levelDepth = markets != null && markets.length > instrumentIndex ? markets[instrumentIndex].level_depth
+        int levelDepth = markets != null && markets.length > instrumentIndex ? markets[instrumentIndex].ordersPerLimit
             : 100;
-        int bookDepth = markets != null && markets.length > instrumentIndex ? markets[instrumentIndex].book_depth
+        int bookDepth = markets != null && markets.length > instrumentIndex ? markets[instrumentIndex].limitsPerBook
             : 50;
         bookDepth = bookDepth / 2; // Divide by 2 as per user request
 
