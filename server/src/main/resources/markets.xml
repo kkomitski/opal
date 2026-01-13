@@ -3,7 +3,7 @@
   <market>
     <symbol>MSFT</symbol>
     <price>37210</price>
-    <limits_per_book>20</limits_per_book>
+    <limits_per_book>200</limits_per_book>
     <orders_per_limit>1200</orders_per_limit>
   </market>
 </markets>

@@ -1,0 +1,99 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Run Main",
+            "request": "launch",
+            "mainClass": "com.github.kkomitski.opal.Main",
+            "projectName": "matching-engine",
+            "vmArgs": [
+                // TODO: Set the max heap allocation
+                "-Xmx6g", 
+                // Sets initial heap size to 512MB
+                "-Xms6g",
+                // Limits JVM to 4 CPU cores
+                "-XX:ActiveProcessorCount=4",
+                // Uses G1 GC for low-pause collections
+                "-XX:+UseG1GC",
+                // Turns on optimizing JIT and server-class settings for best performance
+                "-server",
+                // Logs GC runs and timings
+                "-verbose:gc",
+                // "-XX:+PrintGCApplicationConcurrentTime",
+                // Enables low-impact sampling profiler
+                "-Xprof",
+                // Prints JIT-compiled methods
+                // "-XX:+PrintCompilation",
+                // Logs detailed GC info
+                // "-XX:+PrintGCDetails",
+                // Sets max GC pause time to 50ms
+                "-XX:MaxGCPauseMillis=50",
+                // Pre-touches heap memory for consistent startup
+                "-XX:+AlwaysPreTouch",
+                // Uses compressed object pointers to reduce memory usage
+                "-XX:+UseCompressedOops",
+                // Disables explicit GC calls (e.g., System.gc)
+                "-XX:+DisableExplicitGC",
+                // Enables thread-local allocation buffers for faster allocation
+                "-XX:+UseTLAB",
+                // Sets TLAB size to 256KB
+                "-XX:TLABSize=256k",
+                // Allows TLAB resizing for optimization
+                "-XX:+ResizeTLAB",
+                // Agrona requires this
+                // https://aeron.io/docs/agrona/direct-buffer/
+                "--add-opens",
+                "java.base/jdk.internal.misc=ALL-UNNAMED",
+                "--add-opens",
+                "java.base/java.util.zip=ALL-UNNAMED",
+            ]
+        },
+        {
+            "type": "java",
+            "name": "Debug Main",
+            "request": "launch",
+            "mainClass": "com.github.kkomitski.opal.Main",
+            "projectName": "matching-engine",
+            "vmArgs": [
+                  "-Xmx6g", 
+                // Sets initial heap size to 512MB
+                "-Xms6g",
+                // Limits JVM to 4 CPU cores
+                "-XX:ActiveProcessorCount=4",
+                // Uses G1 GC for low-pause collections
+                "-XX:+UseG1GC",
+                // Turns on optimizing JIT and server-class settings for best performance
+                "-server",
+                // Logs GC runs and timings
+                "-verbose:gc",
+                // Enables low-impact sampling profiler
+                "-Xprof",
+                // Prints JIT-compiled methods
+                // "-XX:+PrintCompilation",
+                // Logs detailed GC info
+                // "-XX:+PrintGCDetails",
+                // Sets max GC pause time to 50ms
+                "-XX:MaxGCPauseMillis=50",
+                // Pre-touches heap memory for consistent startup
+                "-XX:+AlwaysPreTouch",
+                // Uses compressed object pointers to reduce memory usage
+                "-XX:+UseCompressedOops",
+                // Disables explicit GC calls (e.g., System.gc)
+                "-XX:+DisableExplicitGC",
+                // Enables thread-local allocation buffers for faster allocation
+                "-XX:+UseTLAB",
+                // Sets TLAB size to 256KB
+                "-XX:TLABSize=256k",
+                // Allows TLAB resizing for optimization
+                "-XX:+ResizeTLAB",
+                // Agrona requires this
+                // https://aeron.io/docs/agrona/direct-buffer/
+                "--add-opens",
+                "java.base/jdk.internal.misc=ALL-UNNAMED",
+                "--add-opens",
+                "java.base/java.util.zip=ALL-UNNAMED",
+            ]
+        }
+    ]
+}

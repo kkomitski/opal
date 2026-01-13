@@ -7,7 +7,7 @@ public class Main {
     
     // Configuration
     private static final int NUM_CONNECTIONS = 100; // Number of concurrent connections
-    private static final int ORDERS_PER_SECOND = 1_000_000; // Target orders per second across all connections
+    private static final int ORDERS_PER_SECOND = 100_000; // Target orders per second across all connections
     private static final int TEST_DURATION_SECONDS = 60; // How long to run the test
 
     public static void main(String[] args) throws Exception {

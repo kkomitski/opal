@@ -40,18 +40,26 @@ public class LoadTestClient {
 
     // Bias to move the price: -1.0 (strong sell/down) to 1.0 (strong buy/up)
     // 0.0 is neutral random walk. 0.1 is slight upward drift.
-    private static final double PRICE_BIAS = 1;
+    private static final double PRICE_BIAS = 0.1;
 
     // Controls the standard deviation of the order price distribution.
     // Higher value -> steeper curve (more orders concentrated at the spread)
     // Lower value -> flatter curve (orders spread out more)
-    private static final double CURVE_STEEPNESS_FACTOR = 8.0;
+    private static final double CURVE_STEEPNESS_FACTOR = 25;
 
-    // Probability (0.0 - 1.0) that an order will cross the spread and match immediately
-    private static final double SPREAD_CROSS_PROBABILITY = 1;
+    // Oscillating spread cross probability
+    private static final double SPREAD_CROSS_PROBABILITY_MIN = 0.2;
+    private static final double SPREAD_CROSS_PROBABILITY_MAX = 1.0;
+    private static final double SPREAD_CROSS_OSCILLATION_PERIOD_SEC = 3; // seconds
 
     // Probability (0.0 - 1.0) of generating an order far from the current price
     private static final double OUTLIER_PROBABILITY = 0.0;
+
+    // Ratio of bid orders (0.5 = balanced, 0.6 = 60% bids/40% asks, reduces ask liquidity)
+    private static final double BID_RATIO = 0.5;
+
+    // Probability (0.0 - 1.0) of sending market orders instead of limit orders
+    private static final double MARKET_ORDER_PROBABILITY = 0.525;
 
     // Volatility factor: How much the "market price" can move per update step
     // relative to the book depth.
@@ -95,6 +103,9 @@ public class LoadTestClient {
         this.testDurationSeconds = testDurationSeconds;
     }
 
+    // Track test start time for oscillation
+    private long testStartTimeMillis = 0;
+
     public void start(String marketsLink) throws Exception {
         // Load markets from URL or file path
         this.markets = MarketsLoader.load(marketsLink);
@@ -130,7 +141,7 @@ public class LoadTestClient {
         System.out.println("Target orders/sec: " + ordersPerSecond);
         System.out.println("Duration: " + testDurationSeconds + " seconds");
         System.out.println(
-                "Scenario: Spread=" + TARGET_SPREAD + ", Bias=" + PRICE_BIAS + ", Steepness=" + CURVE_STEEPNESS_FACTOR);
+                "Scenario: Spread=" + TARGET_SPREAD + ", Bias=" + PRICE_BIAS + ", Steepness=" + CURVE_STEEPNESS_FACTOR + ", BidRatio=" + BID_RATIO + ", MarketProb=" + MARKET_ORDER_PROBABILITY);
         System.out.println("----------------------------------------");
 
         // Create all connections
@@ -148,18 +159,18 @@ public class LoadTestClient {
         System.out.println("Active connections: " + activeConnections.get());
 
         // Start sending orders
-        long startTime = System.currentTimeMillis();
+        testStartTimeMillis = System.currentTimeMillis();
         startSendingOrders();
 
         // Start metrics & market walk
-        startMetricsReporting(startTime);
+        startMetricsReporting(testStartTimeMillis);
         startMarketSimulation();
 
         // Wait for test duration
         Thread.sleep(testDurationSeconds * 1000L);
 
         shutdown();
-        printFinalReport(startTime);
+        printFinalReport(testStartTimeMillis);
     }
 
     private void initMarketState() {
@@ -265,6 +276,14 @@ public class LoadTestClient {
         }, 0, 100, TimeUnit.MILLISECONDS); // Update price 10 times a second
     }
 
+    private double getOscillatingSpreadCrossProbability() {
+        double elapsedSec = (System.currentTimeMillis() - testStartTimeMillis) / 1000.0;
+        double phase = (elapsedSec % SPREAD_CROSS_OSCILLATION_PERIOD_SEC) / SPREAD_CROSS_OSCILLATION_PERIOD_SEC;
+        double sine = Math.sin(2 * Math.PI * phase);
+        double prob = SPREAD_CROSS_PROBABILITY_MIN + (SPREAD_CROSS_PROBABILITY_MAX - SPREAD_CROSS_PROBABILITY_MIN) * (0.5 + 0.5 * sine);
+        return prob;
+    }
+
     private void sendRandomOrder(Channel channel) {
         try {
             // 1. Pick Instrument
@@ -302,25 +321,30 @@ public class LoadTestClient {
                 ? maxOrderQtyPerInstrument[instrumentIndex] : 1000;
 
             // 2. Determine Side (Bid/Ask)
-            boolean isBid = orderSideToggle.getAndIncrement() % 2 == 0;
+            boolean isBid = random.nextDouble() < BID_RATIO;
 
             // 3. Determine Price
             int price;
             boolean isOutlier = random.nextDouble() < OUTLIER_PROBABILITY;
-            boolean crossSpread = random.nextDouble() < SPREAD_CROSS_PROBABILITY;
+            double spreadCrossProb = getOscillatingSpreadCrossProbability();
+            boolean crossSpread = random.nextDouble() < spreadCrossProb;
+            boolean isMarket = random.nextDouble() < MARKET_ORDER_PROBABILITY;
 
 
-            if (isOutlier) {
+            if (isMarket) {
+                 // Market order: price = 0
+                 price = 0;
+            } else if (isOutlier) {
                  // Generate deep OTM order, clamped to maxPriceDeviation
                  int range = Math.min(maxPriceDeviation, bookDepth * 2);
                  int offset = random.nextInt(range) + (int) (range * 0.3);
                  price = isBid ? currentPrice - offset : currentPrice + offset;
             } else if (crossSpread) {
-                 // Aggressive order crossing the spread
+                 // Aggressive order crossing the spread, with small random offset to prevent flooding single levels
                  if (isBid) {
-                     price = currentPrice + 1; 
+                     price = currentPrice + 1 + random.nextInt(3); 
                  } else {
-                     price = currentPrice - 1; 
+                     price = currentPrice - 1 - random.nextInt(3); 
                  }
             } else {
                  // Passive order - Bell curve centered at the spread
@@ -338,13 +362,17 @@ public class LoadTestClient {
             }
 
             // Final safety clamp relative to Current Price
-            int minPrice = currentPrice - maxPriceDeviation;
-            int maxPrice = currentPrice + maxPriceDeviation;
-            price = Math.max(minPrice, Math.min(maxPrice, price));
-            
-            // Hard clamp against price collar
-            if (price <= 0)
-                price = 1;
+            // Calculate the valid price collar (centered around currentPrice, width = bookDepth)
+            if (!isMarket) {
+                int halfBook = bookDepth / 2;
+                int collarMin = Math.max(1, currentPrice - halfBook);
+                int collarMax = currentPrice + halfBook;
+                price = Math.max(collarMin, Math.min(collarMax, price));
+                
+                // Hard clamp against zero
+                if (price <= 0)
+                    price = 1;
+            }
 
             // 4. Determine Quantity (exponential decay from spread)
             double distFromSpread = Math

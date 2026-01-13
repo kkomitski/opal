@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='UTF-8'>
+<title>OrderBook Dump - TEST</title>
+<style>
+body { background-color: #1e1e1e; color: #d4d4d4; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
+.container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 300px 1fr; gap: 20px; }
+.stats-panel { background-color: #252526; padding: 20px; border-radius: 8px; border: 1px solid #3e3e42; height: fit-content; position: sticky; top: 20px; }
+.book-panel { background-color: #252526; border-radius: 8px; border: 1px solid #3e3e42; overflow: hidden; }
+h1, h2, h3 { color: #ffffff; margin-top: 0; }
+.stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #3e3e42; padding-bottom: 4px; }
+.stat-label { color: #858585; }
+.stat-value { font-weight: bold; }
+.order-table { width: 100%; border-collapse: collapse; }
+.order-table th, .order-table td { padding: 8px 12px; text-align: right; }
+.order-table th { background-color: #333333; color: #cccccc; font-weight: 600; text-align: center; }
+.ask-row { background-color: rgba(255, 99, 71, 0.1); color: #ff6b6b; }
+.ask-row:hover { background-color: rgba(255, 99, 71, 0.2); }
+.bid-row { background-color: rgba(60, 179, 113, 0.1); color: #4ec9b0; }
+.bid-row:hover { background-color: rgba(60, 179, 113, 0.2); }
+.spread-row { background-color: #2d2d30; color: #ffd700; font-weight: bold; text-align: center; padding: 15px; border-top: 2px solid #555; border-bottom: 2px solid #555; }
+.bar-container { background-color: #333; height: 4px; width: 100%; margin-top: 5px; border-radius: 2px; overflow: hidden; }
+.bar-fill { height: 100%; transition: width 0.3s ease; }
+.ask-fill { background-color: #ff6b6b; }
+.bid-fill { background-color: #4ec9b0; }
+</style>
+</head>
+<body>
+<div class='container'>
+<div class='stats-panel'>
+<h2>Book Stats</h2>
+<div class='stat-row'>
+<span class='stat-label'>Instrument</span>
+<span class='stat-value'>TEST</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>ID</span>
+<span class='stat-value'>1</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Timestamp</span>
+<span class='stat-value'>21:50:54.771539</span>
+</div>
+<hr style='border-color: #3e3e42; opacity: 0.5;'>
+<div class='stat-row'>
+<span class='stat-label'>Best Ask</span>
+<span class='stat-value'>-</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Best Bid</span>
+<span class='stat-value'>-</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Spread</span>
+<span class='stat-value'>0</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Mid Price</span>
+<span class='stat-value'>0</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Crossed?</span>
+<span class='stat-value'>No</span>
+</div>
+<hr style='border-color: #3e3e42; opacity: 0.5;'>
+<div class='stat-row'>
+<span class='stat-label'>Bid Levels</span>
+<span class='stat-value'>0</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Ask Levels</span>
+<span class='stat-value'>0</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Total Bid Vol</span>
+<span class='stat-value'>0</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Total Ask Vol</span>
+<span class='stat-value'>0</span>
+</div>
+<hr style='border-color: #3e3e42; opacity: 0.5;'>
+<div class='stat-row'>
+<span class='stat-label'>Disruptor Usage</span>
+<span class='stat-value'>0.01%</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Ring Buffer</span>
+<span class='stat-value'>32768</span>
+</div>
+<hr style='border-color: #3e3e42; opacity: 0.5;'>
+<div class='stat-row'>
+<span class='stat-label'>Limit Pool Usage</span>
+<span class='stat-value'>0.00% (0/1000)</span>
+</div>
+<div class='stat-row'>
+<span class='stat-label'>Chunk Pool Usage</span>
+<span class='stat-value'>0.00% (0/1000)</span>
+</div>
+</div>
+<div class='book-panel'>
+<table class='order-table'>
+<thead><tr><th>Count</th><th>Volume</th><th>Price</th></tr></thead>
+<tbody>
+<tr><td colspan='3' class='spread-row' style='position:relative;'>
+<div style='display:flex; justify-content:center; align-items:center; width:100%; height:100%;'>
+<span style='margin-right:16px;'>SPREAD: 0</span>
+<span style='background:#333; color:#ffd700; border-radius:6px; padding:4px 12px; font-size:1.1em; font-weight:bold; margin-left:16px;'>Mid: 0</span>
+</div>
+</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</body></html>

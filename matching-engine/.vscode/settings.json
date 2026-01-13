@@ -1,0 +1,15 @@
+{
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.format.settings.url": "/Users/kkomitski/eclipse-formatter.xml",
+  "java.test.config": [
+    {
+      "name": "Agrona",
+      "vmArgs": [
+        "--add-opens",
+        "java.base/jdk.internal.misc=ALL-UNNAMED",
+        "--add-opens",
+        "java.base/java.util.zip=ALL-UNNAMED"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.github.kkomitski.opal</groupId>
+        <artifactId>opal</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>matching-engine</artifactId>
+
+    <dependencies>
+        <!-- Utils Module -->
+        <dependency>
+            <groupId>com.github.kkomitski.opal</groupId>
+            <artifactId>utils</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+        <!-- Netty -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-transport</artifactId>
+            <version>4.2.9.Final</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-buffer</artifactId>
+            <version>4.2.9.Final</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-common</artifactId>
+            <version>4.2.9.Final</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-handler</artifactId>
+            <version>4.2.9.Final</version>
+        </dependency>
+
+        <!-- Prometheus -->
+        <dependency>
+            <groupId>io.prometheus</groupId>
+            <artifactId>simpleclient</artifactId>
+            <version>0.16.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.prometheus</groupId>
+            <artifactId>simpleclient_hotspot</artifactId>
+            <version>0.16.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.prometheus</groupId>
+            <artifactId>simpleclient_common</artifactId>
+            <version>0.16.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.prometheus</groupId>
+            <artifactId>simpleclient_httpserver</artifactId>
+            <version>0.16.0</version>
+        </dependency>
+
+        <!-- LMAX Disruptor -->
+        <dependency>
+            <groupId>com.lmax</groupId>
+            <artifactId>disruptor</artifactId>
+            <version>3.4.2</version>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.2.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- FastUtil -->
+        <dependency>
+            <groupId>it.unimi.dsi</groupId>
+            <artifactId>fastutil</artifactId>
+            <version>8.5.15</version>
+        </dependency>
+
+        <!-- Agrona -->
+        <dependency>
+            <groupId>org.agrona</groupId>
+            <artifactId>agrona</artifactId>
+            <version>2.3.0</version>
+        </dependency>
+
+        <!-- Aeron -->
+        <dependency>
+            <groupId>io.aeron</groupId>
+            <artifactId>aeron-driver</artifactId>
+            <version>1.46.7</version>
+        </dependency>
+        <dependency>
+            <groupId>io.aeron</groupId>
+            <artifactId>aeron-client</artifactId>
+            <version>1.46.7</version>
+        </dependency>
+    </dependencies>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <mockito.inline.enabled>false</mockito.inline.enabled>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer
+                                    implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.github.kkomitski.opal.Main</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.github.kkomitski.opal.Main</mainClass>
+                    <jvmArgs>
+                        <!-- Sets maximum heap size to 1GB -->
+                        <!-- <jvmArg>-Xmx1g</jvmArg> -->
+
+                        <!-- Sets initial heap size to 512MB -->
+                        <jvmArg>-Xms512m</jvmArg>
+
+                        <!-- Limits JVM to 4 CPU cores -->
+                        <jvmArg>-XX:ActiveProcessorCount=4</jvmArg>
+
+                        <!-- Uses G1 GC for low-pause collections -->
+                        <jvmArg>-XX:+UseG1GC</jvmArg>
+
+                        <!-- Turns on optimizing JIT and server-class settings for best performance -->
+                        <jvmArg>-server</jvmArg>
+
+                        <!-- Logs GC runs and timings -->
+                        <jvmArg>-verbose:gc</jvmArg>
+
+                        <!-- Enables low-impact sampling profiler -->
+                        <jvmArg>-Xprof</jvmArg>
+
+                        <!-- Prints JIT-compiled methods -->
+                        <jvmArg>-XX:+PrintCompilation</jvmArg>
+
+                        <!-- Logs detailed GC info -->
+                        <jvmArg>-XX:+PrintGCDetails</jvmArg>
+
+                        <!-- Sets max GC pause time to 50ms ** Shouldn't be needed -->
+                        <!-- <jvmArg>-XX:MaxGCPauseMillis=50</jvmArg> -->
+
+                        <!-- Pre-touches heap memory for consistent startup -->
+                        <jvmArg>-XX:+AlwaysPreTouch</jvmArg>
+
+                        <!-- Uses compressed object pointers to reduce memory usage -->
+                        <jvmArg>-XX:+UseCompressedOops</jvmArg>
+
+                        <!-- Disables explicit GC calls (e.g., System.gc) -->
+                        <jvmArg>-XX:+DisableExplicitGC</jvmArg>
+
+                        <!-- Enables thread-local allocation buffers for faster allocation -->
+                        <jvmArg>-XX:+UseTLAB</jvmArg>
+
+                        <!-- Sets TLAB size to 256KB **Buffer allocated directly on the thread, used
+                        for fast allocation and reducing contention -->
+                        <jvmArg>-XX:TLABSize=256k</jvmArg>
+
+                        <!-- Allows TLAB resizing for optimization -->
+                        <jvmArg>-XX:+ResizeTLAB</jvmArg>
+
+                        <!-- Agrona 2.x requires access to internal JDK APIs -->
+                        <jvmArg>--add-opens</jvmArg>
+                        <jvmArg>java.base/jdk.internal.misc=ALL-UNNAMED</jvmArg>
+                        <jvmArg>--add-opens</jvmArg>
+                        <jvmArg>java.base/java.util.zip=ALL-UNNAMED</jvmArg>
+
+                        <!-- Traces class loading -->
+                        <!-- <jvmArg>-XX:+TraceClassLoading</jvmArg> -->
+
+                        <!-- Traces class unloading -->
+                        <!-- <jvmArg>-XX:+TraceClassUnloading</jvmArg> -->
+
+                        <!-- Enables high-impact instrumenting profiler for allocations/CPU (slow) -->
+                        <!-- <jvmArg>-Xrunhprof</jvmArg> -->
+
+                        <!-- Uses parallel young-generation GC to reduce pauses -->
+                        <!-- <jvmArg>-XX:+UseParallelGC</jvmArg> -->
+
+                        <!-- Uses concurrent mark-sweep GC for reduced pauses -->
+                        <!-- <jvmArg>-XX:+UseConcMarkSweepGC</jvmArg> -->
+
+                        <!-- Sets new-to-old generation ratio (default 1:8 server) -->
+                        <!-- <jvmArg>-XX:NewRatio=2</jvmArg> -->
+
+                        <!-- Sets max permanent generation size -->
+                        <!-- <jvmArg>-XX:MaxPermSize=128M</jvmArg> -->
+
+                        <!-- Sets minimum heap size (e.g., -Xms512M) -->
+                        <!-- <jvmArg>-Xms512M</jvmArg> -->
+
+                        <!-- Sets maximum heap size (e.g., -Xmx512M) -->
+                        <!-- <jvmArg>-Xmx512M</jvmArg> -->
+
+                    </jvmArgs>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.0.0-M5</version>
+                <configuration>
+                    <argLine>--add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/java.util.zip=ALL-UNNAMED</argLine>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
