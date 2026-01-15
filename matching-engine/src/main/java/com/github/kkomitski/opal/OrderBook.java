@@ -42,7 +42,7 @@ public class OrderBook {
 
   private final Disruptor<OrderRequest> disruptor;
   private final RingBuffer<OrderRequest> ringBuffer;
-  private final int RING_BUFFER_SIZE = 32_768; // Increased from 8132 for higher throughput
+  private final int RING_BUFFER_SIZE = 32_768; // Increased from 8132
 
   private final Int2ObjectHashMap<Limit> bidLimits;
   private final Int2ObjectHashMap<Limit> askLimits;
