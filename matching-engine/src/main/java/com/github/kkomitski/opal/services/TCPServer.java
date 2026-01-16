@@ -16,6 +16,9 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.FixedLengthFrameDecoder;
 
+/**
+ * @deprecated in favour of UDP/Aeron
+ */
 public class TCPServer {
   private static final int PORT = 42069;
   private static final int BUFFER_SIZE = 65535;
