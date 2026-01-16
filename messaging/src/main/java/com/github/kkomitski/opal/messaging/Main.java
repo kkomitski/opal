@@ -4,7 +4,6 @@ import java.nio.ByteOrder;
 
 import com.github.kkomitski.opal.aeron.utils.AeronMediaDriver;
 import com.github.kkomitski.opal.aeron.utils.AeronSubscriber;
-import com.github.kkomitski.opal.utils.MatchEventDecoder;
 
 import io.aeron.logbuffer.FragmentHandler;
 import net.openhft.affinity.AffinityLock;
@@ -26,31 +25,23 @@ public class Main {
         }
     }
 
+    // TODO: Add a ring buffer 
     private static void runLoop() {
         try (AffinityLock lock = AffinityLock.acquireLock(WORKER_CORE_ID);
              AeronMediaDriver mediaDriver = new AeronMediaDriver();
              AeronSubscriber subscriber = new AeronSubscriber(mediaDriver, "ipc", MATCH_EVENT_STREAM_ID)) {
 
             final FragmentHandler handler = (buffer, offset, length, header) -> {
-                if (length < MatchEventDecoder.SIZE) {
-                    return;
+                // Protocol TBD.
+                // For now, treat this as an opaque payload (e.g. raw OrderRequest bytes or any future event type).
+                // TODO(Kafka): publish to Kafka after decoding protocol version/type.
+
+                if (length >= 4) {
+                    final int firstWord = buffer.getInt(offset, ByteOrder.BIG_ENDIAN);
+                    System.out.println("IPC msg len=" + length + " firstWord=" + firstWord);
+                } else {
+                    System.out.println("IPC msg len=" + length);
                 }
-
-                final int takerOrderId = buffer.getInt(offset, ByteOrder.BIG_ENDIAN);
-                final int makerOrderId = buffer.getInt(offset + 4, ByteOrder.BIG_ENDIAN);
-                final int price = buffer.getInt(offset + 8, ByteOrder.BIG_ENDIAN);
-                final int quantity = buffer.getInt(offset + 12, ByteOrder.BIG_ENDIAN);
-                final long timestamp = buffer.getLong(offset + 16, ByteOrder.BIG_ENDIAN);
-
-                // TODO(Kafka): publish to Kafka topic here.
-                // e.g. producer.send(new ProducerRecord<>("matches", key, serializedPayload));
-                // Keep this handler allocation-free and fast.
-
-                System.out.println("MATCH taker=" + takerOrderId +
-                        " maker=" + makerOrderId +
-                        " px=" + price +
-                        " qty=" + quantity +
-                        " ts=" + timestamp);
             };
 
             while (!Thread.currentThread().isInterrupted()) {

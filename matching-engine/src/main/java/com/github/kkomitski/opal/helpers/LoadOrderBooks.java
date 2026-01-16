@@ -4,11 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.github.kkomitski.opal.OrderBook;
+import com.github.kkomitski.opal.services.EgressService;
 import com.github.kkomitski.opal.utils.Market;
 import com.github.kkomitski.opal.utils.MarketsLoader;
 
 public class LoadOrderBooks {
-  public static OrderBook[] fromXML(String source) {
+  public static OrderBook[] fromXML(String source, EgressService egressService) {
     Market[] markets = MarketsLoader.load(source);
     List<OrderBook> orderBooks = new ArrayList<>();
 
@@ -19,7 +20,8 @@ public class LoadOrderBooks {
         market.symbol,
         i,
         market.limitsPerBook,
-        market.ordersPerLimit
+        market.ordersPerLimit,
+        egressService
       ));
     }
 

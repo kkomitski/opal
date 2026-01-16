@@ -18,8 +18,7 @@ import com.github.kkomitski.opal.orderbook.Limit;
 import com.github.kkomitski.opal.orderbook.LimitPool;
 import com.github.kkomitski.opal.orderbook.Order;
 import com.github.kkomitski.opal.orderbook.OrderRequest;
-import com.github.kkomitski.opal.services.messaging.MatchEventPublisher;
-import com.github.kkomitski.opal.utils.MatchEventDecoder;
+import com.github.kkomitski.opal.services.EgressService;
 import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
@@ -54,9 +53,8 @@ public class OrderBook {
   // 1000 chunks * 256 orders = 256,000 orders total across 300 levels
   private final LimitPool limitPool;
 
-  private final byte[] messageBuffer = new byte[MatchEventDecoder.SIZE]; // exact message size TBC
-
-  private volatile MatchEventPublisher matchEventPublisher = MatchEventPublisher.noop();
+  // Used to throw messages out of the orderbook to via IPC
+  private final EgressService egressService;
 
   // Diagnostics
   private double disruptorUsage = 0;
@@ -67,10 +65,11 @@ public class OrderBook {
 
   private static final int ticksToRender = 50_000;
 
-  public OrderBook(String name, int instrumentIndex, int limitsPerBook, int ordersPerLimit) {
+  public OrderBook(String name, int instrumentIndex, int limitsPerBook, int ordersPerLimit, EgressService egressService) {
     this.instrumentIndex = instrumentIndex;
     this.name = name;
     this.MAX_LIMITS_PER_BOOK = limitsPerBook;
+    this.egressService = egressService;
 
     int chunksPerLimit = (int) Math.ceil((double) ordersPerLimit / MAX_ORDERS_PER_CHUNK);
     int chunkPoolSize = MAX_LIMITS_PER_BOOK * chunksPerLimit;
@@ -125,10 +124,6 @@ public class OrderBook {
 
     this.disruptor.start();
     this.ringBuffer = disruptor.getRingBuffer();
-  }
-
-  public void setMatchEventPublisher(final MatchEventPublisher matchEventPublisher) {
-    this.matchEventPublisher = matchEventPublisher == null ? MatchEventPublisher.noop() : matchEventPublisher;
   }
 
   public void publishOrder(ByteBuf buf) {
@@ -191,7 +186,7 @@ public class OrderBook {
     int size = order.getQuantity();
     int orderId = order.getId();
 
-    int remainingSize = MatchOrder(size, 0, orderId, isBid, false);
+    int remainingSize = MatchOrder(order, size, 0, orderId, isBid, false);
 
     if (remainingSize > 0) {
       // Maybe emit a message?
@@ -231,7 +226,7 @@ public class OrderBook {
       // Reject bid orders that are too cheap - ie outside of the price collar
       int bidPrice = orderPrice;
       int size = order.getQuantity();
-      int remainingSize = MatchOrder(size, bidPrice, orderId, true, true);
+      int remainingSize = MatchOrder(order, size, bidPrice, orderId, true, true);
 
       // Still some remaining demand that cannot be met - add to the orderbook
       if (remainingSize > 0) {
@@ -257,7 +252,7 @@ public class OrderBook {
       int askPrice = orderPrice;
       int size = order.getQuantity();
 
-      int remainingSize = MatchOrder(size, askPrice, orderId, false, true);
+      int remainingSize = MatchOrder(order, size, askPrice, orderId, false, true);
 
       // Still some remaining supply that cannot be met - add to the orderbook
       if (remainingSize > 0) {
@@ -280,10 +275,13 @@ public class OrderBook {
 
   }
 
-  private int MatchOrder(int remainingSize, int price, int orderId, boolean isBid, boolean isLimit) {
+  private int MatchOrder(final OrderRequest takerOrder, int remainingSize, int price, int orderId, boolean isBid, boolean isLimit) {
     // Select the opposing book
     IntHeapPriorityQueue oppositePrices = isBid ? askPrices : bidPrices;
     Map<Integer, Limit> oppositeLimits = isBid ? askLimits : bidLimits;
+
+    // Opaque egress payload (protocol TBD). For now we just ship the taker OrderRequest bytes.
+    final DirectBuffer takerBuffer = takerOrder == null ? null : takerOrder.buffer;
 
     // While we still have demand/supply and opposing orders exist
     while (remainingSize > 0 && !oppositePrices.isEmpty()) {
@@ -311,44 +309,30 @@ public class OrderBook {
         if (headOrder == null)
           break;
 
-        int matchPrice = isBid ? bestOppositePrice : bestOppositePrice;
-
         if (headOrder.size == remainingSize) {
           // Complete fill
-          Order matchedOrder = bestOppositeLimit.removeOrder();
+          bestOppositeLimit.removeOrder();
 
-          MatchEventDecoder.encode(orderId,
-              matchedOrder.id,
-              matchPrice,
-              // TODO: Replace with Agrona timer
-              matchedOrder.size, System.currentTimeMillis(), messageBuffer);
-
-          matchEventPublisher.publishMatchEvent(messageBuffer);
+          if (takerBuffer != null) {
+            egressService.egress(takerBuffer, 0, OrderRequest.REQUEST_SIZE);
+          }
           remainingSize = 0;
         } else if (headOrder.size > remainingSize) {
           // Partial fill (more supply/demand left on opposite side)
-          MatchEventDecoder.encode(orderId,
-              headOrder.id,
-              matchPrice,
-              // TODO: Replace with Agrona timer
-              remainingSize, System.currentTimeMillis(), messageBuffer);
-
-          matchEventPublisher.publishMatchEvent(messageBuffer);
+          if (takerBuffer != null) {
+            egressService.egress(takerBuffer, 0, OrderRequest.REQUEST_SIZE);
+          }
 
           bestOppositeLimit.partialFill(remainingSize);
           remainingSize = 0;
         } else { // headOrder.size < remainingSize
-          Order matchedOrder = bestOppositeLimit.removeOrder();
+          bestOppositeLimit.removeOrder();
 
-          MatchEventDecoder.encode(orderId,
-              matchedOrder.id,
-              matchPrice,
-              // TODO: Replace with Agrona timer
-              matchedOrder.size, System.currentTimeMillis(), messageBuffer);
+          if (takerBuffer != null) {
+            egressService.egress(takerBuffer, 0, OrderRequest.REQUEST_SIZE);
+          }
 
-          matchEventPublisher.publishMatchEvent(messageBuffer);
-
-          remainingSize -= matchedOrder.size;
+          remainingSize -= headOrder.size;
         }
       }
 
