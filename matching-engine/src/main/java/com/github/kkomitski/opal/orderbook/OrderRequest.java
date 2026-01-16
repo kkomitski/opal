@@ -1,7 +1,6 @@
 package com.github.kkomitski.opal.orderbook;
 
 import org.agrona.DirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 
 public class OrderRequest {
   public static enum RejectionReason {
@@ -15,7 +14,7 @@ public class OrderRequest {
   public static final int REQUEST_SIZE = 11;
 
   private static final int INSTRUMENT_MASK = 32767;
-  private static final int BID_BIT_MASK = 128;
+  private static final int BID_BIT_MASK = 0x8000;
   private static final int BYTE_MASK = 255;
   private static final int BYTE_SHIFT = 8;
   private static final int TWO_BYTE_SHIFT = 16;
@@ -26,73 +25,74 @@ public class OrderRequest {
   private static final int QUANTITY_OFFSET = 5;
   private static final int ID_OFFSET = 7;
 
-  public final DirectBuffer buffer;
+  private int instrumentIndex;
+  private boolean bid;
+  private int price;
+  private int quantity;
+  private int id;
 
   public OrderRequest() {
-    this.buffer = new UnsafeBuffer(new byte[REQUEST_SIZE]);
-  }
-
-  public OrderRequest(DirectBuffer buffer) {
-    this.buffer = buffer;
   }
 
   public int getInstrumentIndex() {
-    int header = ((buffer.getByte(INSTRUMENT_INDEX_OFFSET) & BYTE_MASK) << BYTE_SHIFT) |
-                 (buffer.getByte(INSTRUMENT_INDEX_OFFSET + 1) & BYTE_MASK);
-    return header & INSTRUMENT_MASK;
+    return instrumentIndex;
   }
 
   public boolean isBid() {
-    return (buffer.getByte(INSTRUMENT_INDEX_OFFSET) & BID_BIT_MASK) != 0;
+    return bid;
   }
 
   public int getPrice() {
-    return (buffer.getByte(PRICE_OFFSET) & BYTE_MASK) << TWO_BYTE_SHIFT |
-           (buffer.getByte(PRICE_OFFSET + 1) & BYTE_MASK) << BYTE_SHIFT |
-           (buffer.getByte(PRICE_OFFSET + 2) & BYTE_MASK);
+    return price;
   }
 
   public int getQuantity() {
-    return (buffer.getByte(QUANTITY_OFFSET) & BYTE_MASK) << BYTE_SHIFT |
-           (buffer.getByte(QUANTITY_OFFSET + 1) & BYTE_MASK);
+    return quantity;
   }
 
   public int getId() {
-    return (buffer.getByte(ID_OFFSET) & BYTE_MASK) << THREE_BYTE_SHIFT |
-           (buffer.getByte(ID_OFFSET + 1) & BYTE_MASK) << TWO_BYTE_SHIFT |
-           (buffer.getByte(ID_OFFSET + 2) & BYTE_MASK) << BYTE_SHIFT |
-           (buffer.getByte(ID_OFFSET + 3) & BYTE_MASK);
+    return id;
   }
 
-  public void setBytes(byte[] src) {
-    if (buffer instanceof UnsafeBuffer) {
-      byte[] dest = ((UnsafeBuffer) buffer).byteArray();
-      System.arraycopy(src, 0, dest, 0, src.length);
-    }
+  public void set(final int instrumentIndex, final boolean isBid, final int price, final int quantity, final int id) {
+    this.instrumentIndex = instrumentIndex;
+    this.bid = isBid;
+    this.price = price;
+    this.quantity = quantity;
+    this.id = id;
   }
 
-  public void setFromOrder(Order order, OrderRequest orderRequestBuffer, boolean isBid, int price, int instrumentIndex) {
-    byte[] dest = ((UnsafeBuffer) this.buffer).byteArray();
+  public void setFromOrder(final Order order, final boolean isBid, final int price, final int instrumentIndex) {
+    set(instrumentIndex, isBid, price, order.size, order.id);
+  }
 
-    // First 2 bytes: The MSB for bid/ask and 15 bits for instrument index (32,767 total)
-    int header = (((isBid ? 1 : 0) << 15) | (instrumentIndex & 32767));
-    dest[0] = (byte) (header >>> 8);
-    dest[1] = (byte) header;
+  public static int decodeInstrumentIndex(final DirectBuffer buffer, final int offset) {
+    final int header = ((buffer.getByte(offset + INSTRUMENT_INDEX_OFFSET) & BYTE_MASK) << BYTE_SHIFT)
+        | (buffer.getByte(offset + INSTRUMENT_INDEX_OFFSET + 1) & BYTE_MASK);
+    return header & INSTRUMENT_MASK;
+  }
 
-    // Next 3 bytes: price (24 bits) (16,777,215 total)
-    // Price of 0 is a Market Order
-    dest[2] = (byte) (price >>> 16);
-    dest[3] = (byte) (price >>> 8);
-    dest[4] = (byte) price;
+  public static boolean decodeIsBid(final DirectBuffer buffer, final int offset) {
+    final int header = ((buffer.getByte(offset + INSTRUMENT_INDEX_OFFSET) & BYTE_MASK) << BYTE_SHIFT)
+        | (buffer.getByte(offset + INSTRUMENT_INDEX_OFFSET + 1) & BYTE_MASK);
+    return (header & BID_BIT_MASK) != 0;
+  }
 
-    // Next 2 bytes: quantity (16 bits) (65,535 total)
-    dest[5] = (byte) (order.size >>> 8);
-    dest[6] = (byte) order.size;
+  public static int decodePrice(final DirectBuffer buffer, final int offset) {
+    return (buffer.getByte(offset + PRICE_OFFSET) & BYTE_MASK) << TWO_BYTE_SHIFT
+        | (buffer.getByte(offset + PRICE_OFFSET + 1) & BYTE_MASK) << BYTE_SHIFT
+        | (buffer.getByte(offset + PRICE_OFFSET + 2) & BYTE_MASK);
+  }
 
-    // Next 4 bytes: order id
-    dest[7] = (byte) (order.id >>> 24);
-    dest[8] = (byte) (order.id >>> 16);
-    dest[9] = (byte) (order.id >>> 8);
-    dest[10] = (byte) order.id;
+  public static int decodeQuantity(final DirectBuffer buffer, final int offset) {
+    return (buffer.getByte(offset + QUANTITY_OFFSET) & BYTE_MASK) << BYTE_SHIFT
+        | (buffer.getByte(offset + QUANTITY_OFFSET + 1) & BYTE_MASK);
+  }
+
+  public static int decodeId(final DirectBuffer buffer, final int offset) {
+    return (buffer.getByte(offset + ID_OFFSET) & BYTE_MASK) << THREE_BYTE_SHIFT
+        | (buffer.getByte(offset + ID_OFFSET + 1) & BYTE_MASK) << TWO_BYTE_SHIFT
+        | (buffer.getByte(offset + ID_OFFSET + 2) & BYTE_MASK) << BYTE_SHIFT
+        | (buffer.getByte(offset + ID_OFFSET + 3) & BYTE_MASK);
   }
 }

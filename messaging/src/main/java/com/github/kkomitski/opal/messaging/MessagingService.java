@@ -31,11 +31,18 @@ public class MessagingService {
 
             final FragmentHandler handler = (buffer, offset, length, header) -> {
                 if (length == MatchEventDecoder.SIZE) {
-                    final int takerOrderId = buffer.getInt(offset + MatchEventDecoder.TAKER_ORDER_ID_OFFSET, ByteOrder.BIG_ENDIAN);
-                    final int makerOrderId = buffer.getInt(offset + MatchEventDecoder.MAKER_ORDER_ID_OFFSET, ByteOrder.BIG_ENDIAN);
-                    final int price = buffer.getInt(offset + MatchEventDecoder.PRICE_OFFSET, ByteOrder.BIG_ENDIAN);
-                    final int quantity = buffer.getInt(offset + MatchEventDecoder.QUANTITY_OFFSET, ByteOrder.BIG_ENDIAN);
-                    final long timestamp = buffer.getLong(offset + MatchEventDecoder.TIMESTAMP_OFFSET, ByteOrder.BIG_ENDIAN);
+                    // final int takerOrderId = buffer.getInt(offset + MatchEventDecoder.TAKER_ORDER_ID_OFFSET, ByteOrder.BIG_ENDIAN);
+                    // final int makerOrderId = buffer.getInt(offset + MatchEventDecoder.MAKER_ORDER_ID_OFFSET, ByteOrder.BIG_ENDIAN);
+                    // final int price = buffer.getInt(offset + MatchEventDecoder.PRICE_OFFSET, ByteOrder.BIG_ENDIAN);
+                    // final int quantity = buffer.getInt(offset + MatchEventDecoder.QUANTITY_OFFSET, ByteOrder.BIG_ENDIAN);
+                    // final long timestamp = buffer.getLong(offset + MatchEventDecoder.TIMESTAMP_OFFSET, ByteOrder.BIG_ENDIAN);
+                    byte[] bytes = buffer.byteArray();
+
+                    final int takerOrderId = MatchEventDecoder.getTakerOrderId(bytes);
+                    final int makerOrderId = MatchEventDecoder.getMakerOrderId(bytes); 
+                    final int price = MatchEventDecoder.getPrice(bytes);
+                    final int quantity = MatchEventDecoder.getQuantity(bytes);
+                    final long timestamp = MatchEventDecoder.getTimestamp(bytes);
 
                     System.out.println(
                             "MATCH taker=" + takerOrderId +

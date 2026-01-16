@@ -8,7 +8,6 @@ package com.github.kkomitski.opal;
 
 import java.util.concurrent.Executors;
 
-import org.agrona.DirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
 import org.agrona.concurrent.EpochClock;
 import org.agrona.concurrent.UnsafeBuffer;
@@ -25,7 +24,6 @@ import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 
-import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.ints.IntComparators;
 import it.unimi.dsi.fastutil.ints.IntHeapPriorityQueue;
 
@@ -125,33 +123,12 @@ public class OrderBook {
     this.ringBuffer = disruptor.getRingBuffer();
   }
 
-  public void publishOrder(ByteBuf buf) {
-    long sequence = ringBuffer.next();
+  public void publishOrder(final int instrumentIndex, final boolean isBid, final int price, final int quantity,
+      final int orderId) {
+    final long sequence = ringBuffer.next();
     try {
-      OrderRequest orderRequestSlot = ringBuffer.get(sequence);
-      byte[] unboxedBytes = ((UnsafeBuffer) orderRequestSlot.buffer).byteArray();
-      buf.getBytes(0, unboxedBytes, 0, OrderRequest.REQUEST_SIZE);
-    } finally {
-      ringBuffer.publish(sequence);
-    }
-  }
-
-  public void publishOrder(DirectBuffer buffer, int offset) {
-    long sequence = ringBuffer.next();
-    try {
-      OrderRequest orderRequestSlot = ringBuffer.get(sequence);
-      byte[] unboxedBytes = ((UnsafeBuffer) orderRequestSlot.buffer).byteArray();
-      buffer.getBytes(offset, unboxedBytes, 0, OrderRequest.REQUEST_SIZE);
-    } finally {
-      ringBuffer.publish(sequence);
-    }
-  }
-
-  public void publishOrder(byte[] orderBytes) {
-    long sequence = ringBuffer.next();
-    try {
-      OrderRequest event = ringBuffer.get(sequence);
-      event.setBytes(orderBytes);
+      final OrderRequest slot = ringBuffer.get(sequence);
+      slot.set(instrumentIndex, isBid, price, quantity, orderId);
     } finally {
       ringBuffer.publish(sequence);
     }
@@ -401,7 +378,7 @@ public class OrderBook {
         final Limit limit = bidIt.getValue();
         while (!limit.isEmpty()) {
           Order order = limit.removeOrder();
-          orderRequestBuffer.setFromOrder(order, orderRequestBuffer, true, price, instrumentIndex);
+          orderRequestBuffer.setFromOrder(order, true, price, instrumentIndex);
           RejectOrder(orderRequestBuffer, OrderRequest.RejectionReason.AVG_PRICE_MOVED_TOO_FAR);
         }
         bidIt.remove();
@@ -420,7 +397,7 @@ public class OrderBook {
         final Limit limit = askIt.getValue();
         while (!limit.isEmpty()) {
           Order order = limit.removeOrder();
-          orderRequestBuffer.setFromOrder(order, orderRequestBuffer, false, price, instrumentIndex);
+          orderRequestBuffer.setFromOrder(order, false, price, instrumentIndex);
           RejectOrder(orderRequestBuffer, OrderRequest.RejectionReason.AVG_PRICE_MOVED_TOO_FAR);
         }
         askIt.remove();

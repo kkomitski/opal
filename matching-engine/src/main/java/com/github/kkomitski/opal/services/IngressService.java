@@ -97,18 +97,29 @@ public class IngressService {
       this.orderBooks = orderBooks;
     }
 
-    // TODO: Find a way to get rid of this copy
     @Override
     public void onFragment(DirectBuffer buffer, int offset, int length, Header header) {
       // Process messages in 11-byte chunks
       int position = offset;
       while (position + OrderRequest.REQUEST_SIZE <= offset + length) {
-        // Read instrument index from first 2 bytes
-        int instrumentIndex = ((buffer.getByte(position) & 0xFF) << 8 | 
-                               (buffer.getByte(position + 1) & 0xFF)) & 0x7FFF;
+        final int headerWord = ((buffer.getByte(position) & 0xFF) << 8) | (buffer.getByte(position + 1) & 0xFF);
+        final boolean isBid = (headerWord & 0x8000) != 0;
+        final int instrumentIndex = headerWord & 0x7FFF;
+
+        final int price = (buffer.getByte(position + 2) & 0xFF) << 16 |
+            (buffer.getByte(position + 3) & 0xFF) << 8 |
+            (buffer.getByte(position + 4) & 0xFF);
+
+        final int quantity = (buffer.getByte(position + 5) & 0xFF) << 8 |
+            (buffer.getByte(position + 6) & 0xFF);
+
+        final int orderId = (buffer.getByte(position + 7) & 0xFF) << 24 |
+            (buffer.getByte(position + 8) & 0xFF) << 16 |
+            (buffer.getByte(position + 9) & 0xFF) << 8 |
+            (buffer.getByte(position + 10) & 0xFF);
 
         if (instrumentIndex >= 0 && instrumentIndex < orderBooks.length) {
-          orderBooks[instrumentIndex].publishOrder(buffer, position);
+          orderBooks[instrumentIndex].publishOrder(instrumentIndex, isBid, price, quantity, orderId);
         } else {
           System.err.println("Invalid instrument index: " + instrumentIndex);
         }
