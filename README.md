@@ -60,6 +60,20 @@ mvn spring-boot:run
 - Client order flow is controlled by constants in `LoadTestClient.java`:
 	- `MAX_PRICE_DEVIATION`, `TARGET_SPREAD`, `PRICE_BIAS`, `CURVE_STEEPNESS_FACTOR`, `SPREAD_CROSS_PROBABILITY`, `OUTLIER_PROBABILITY`, `VOLATILITY_FACTOR`
 
+## JVM Notes (Agrona/Aeron)
+
+### `--add-opens` flags
+
+Agrona/Aeron use low-level JDK internals for performance. On newer JDKs you may need these JVM args when running tests or applications:
+
+- `--add-opens jdk.unsupported/sun.misc=ALL-UNNAMED`
+- `--add-opens java.base/jdk.internal.misc=ALL-UNNAMED`
+- `--add-opens java.base/java.util.zip=ALL-UNNAMED`
+
+### Endianness
+
+Agrona `DirectBuffer` operations default to the platform endianness. If you have components running on different endianness, specify `ByteOrder` explicitly when reading/writing fields.
+
 ## Architecture
 
 - Matching engine uses LMAX Disruptor for event processing

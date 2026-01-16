@@ -7,13 +7,13 @@ import io.aeron.Publication;
 public class AeronPublisher implements AutoCloseable {
     public static final String UDP_ENDPOINT_PROP = "opal.aeron.udp.pub.endpoint";
 
-    protected final AeronMediaDriver mediaDriver;
+    protected final AttachAeronMediaDriver mediaDriver;
     protected final String transport;
     protected final int streamId;
     protected final String channel;
     protected final Publication publication;
 
-    public AeronPublisher(final AeronMediaDriver mediaDriver, final String transport, final int streamId) {
+    public AeronPublisher(final AttachAeronMediaDriver mediaDriver, final String transport, final int streamId) {
         if (mediaDriver == null)
         {
             throw new IllegalArgumentException("mediaDriver must not be null");

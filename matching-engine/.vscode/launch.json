@@ -44,6 +44,8 @@
                 // Agrona requires this
                 // https://aeron.io/docs/agrona/direct-buffer/
                 "--add-opens",
+                "jdk.unsupported/sun.misc=ALL-UNNAMED",
+                "--add-opens",
                 "java.base/jdk.internal.misc=ALL-UNNAMED",
                 "--add-opens",
                 "java.base/java.util.zip=ALL-UNNAMED",
@@ -89,6 +91,8 @@
                 "-XX:+ResizeTLAB",
                 // Agrona requires this
                 // https://aeron.io/docs/agrona/direct-buffer/
+                "--add-opens",
+                "jdk.unsupported/sun.misc=ALL-UNNAMED",
                 "--add-opens",
                 "java.base/jdk.internal.misc=ALL-UNNAMED",
                 "--add-opens",

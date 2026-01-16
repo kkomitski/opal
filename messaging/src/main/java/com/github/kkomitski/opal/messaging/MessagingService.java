@@ -2,8 +2,9 @@ package com.github.kkomitski.opal.messaging;
 
 import java.nio.ByteOrder;
 
-import com.github.kkomitski.opal.aeron.utils.AeronMediaDriver;
 import com.github.kkomitski.opal.aeron.utils.AeronSubscriber;
+import com.github.kkomitski.opal.aeron.utils.AttachAeronMediaDriver;
+import com.github.kkomitski.opal.utils.MatchEventDecoder;
 import com.github.kkomitski.opal.utils.OpalConfig;
 
 import io.aeron.logbuffer.FragmentHandler;
@@ -25,14 +26,27 @@ public class MessagingService {
     // TODO: Add a ring buffer to swallow incoming messages
     private static void runLoop() {
         try (AffinityLock lock = AffinityLock.acquireLock(OpalConfig.MESSAGING_SERVICE_CORE);
-             AeronMediaDriver mediaDriver = new AeronMediaDriver();
+             AttachAeronMediaDriver mediaDriver = new AttachAeronMediaDriver();
              AeronSubscriber subscriber = new AeronSubscriber(mediaDriver, "ipc", OpalConfig.MATCHER_EGRESS_STREAM_ID)) {
 
             final FragmentHandler handler = (buffer, offset, length, header) -> {
-                // Protocol TBD.
-                // For now, treat this as an opaque payload (e.g. raw OrderRequest bytes or any future event type).
-                // TODO(Kafka): publish to Kafka after decoding protocol version/type.
+                if (length == MatchEventDecoder.SIZE) {
+                    final int takerOrderId = buffer.getInt(offset + MatchEventDecoder.TAKER_ORDER_ID_OFFSET, ByteOrder.BIG_ENDIAN);
+                    final int makerOrderId = buffer.getInt(offset + MatchEventDecoder.MAKER_ORDER_ID_OFFSET, ByteOrder.BIG_ENDIAN);
+                    final int price = buffer.getInt(offset + MatchEventDecoder.PRICE_OFFSET, ByteOrder.BIG_ENDIAN);
+                    final int quantity = buffer.getInt(offset + MatchEventDecoder.QUANTITY_OFFSET, ByteOrder.BIG_ENDIAN);
+                    final long timestamp = buffer.getLong(offset + MatchEventDecoder.TIMESTAMP_OFFSET, ByteOrder.BIG_ENDIAN);
 
+                    System.out.println(
+                            "MATCH taker=" + takerOrderId +
+                            " maker=" + makerOrderId +
+                            " price=" + price +
+                            " qty=" + quantity +
+                            " ts=" + timestamp);
+                    return;
+                }
+
+                // Unknown payload; best-effort debug print.
                 if (length >= 4) {
                     final int firstWord = buffer.getInt(offset, ByteOrder.BIG_ENDIAN);
                     System.out.println("IPC msg len=" + length + " firstWord=" + firstWord);

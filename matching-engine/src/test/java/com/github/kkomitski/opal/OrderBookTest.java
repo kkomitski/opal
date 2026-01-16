@@ -2,25 +2,26 @@ package com.github.kkomitski.opal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
 
 import java.lang.reflect.Field;
 
+import org.agrona.concurrent.SystemEpochClock;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import com.github.kkomitski.opal.aeron.utils.AeronPublisher;
 import com.github.kkomitski.opal.services.EgressService;
 import com.github.kkomitski.opal.utils.OrderRequestDecoder;
 
 public class OrderBookTest {
 
-  private static final EgressService DUMMY_EGRESS_SERVICE = new EgressService(mock(AeronPublisher.class));
+  private static final SystemEpochClock TEST_CLOCK = SystemEpochClock.INSTANCE;
+
+  private static final EgressService DUMMY_EGRESS_SERVICE = new EgressService();
 
   @Test
   @DisplayName("Limit order clears multiple bid limits across price levels")
   void testLimitOrderClearsMultipleBidLevels() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
     int quantity = 2;
     int[] bidPrices = { 120, 121, 122 };
     int[] askPrices = { 124, 125, 126 };
@@ -99,7 +100,7 @@ public class OrderBookTest {
   void testOrderBookLimitAndOrderInitialization() throws Exception {
     int priceLevels = 7;
     int ordersPerLevel = 3;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Access bidLimits and askLimits via reflection
     Field bidLimitsField = OrderBook.class.getDeclaredField("bidLimits");
@@ -122,7 +123,7 @@ public class OrderBookTest {
   void testMultipleOrdersAtDifferentLevelsAndSides() throws Exception {
     int priceLevels = 5;
     int ordersPerLevel = 4;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Orders to add: (side, price, quantity, id)
     Object[][] orders = {
@@ -197,7 +198,7 @@ public class OrderBookTest {
   @Test
   @DisplayName("Limit order is correctly added to bid limit and reflected in state")
   void testLimitOrderIsAddedToBidLimit() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Create a bid (buy) limit order
     int price = 101;
@@ -230,7 +231,7 @@ public class OrderBookTest {
   @Test
   @DisplayName("Limit order is correctly added to ask limit and reflected in state")
   void testLimitOrderIsAddedToAskLimit() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Create an ask (sell) limit order
     int price = 102;
@@ -263,7 +264,7 @@ public class OrderBookTest {
   @Test
   @DisplayName("Limit correctly enforces order capacity and tracks initialized orders")
   void testLimitOrderLimitCapacity() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     int price = 105;
     boolean isBid = true;
@@ -298,7 +299,7 @@ public class OrderBookTest {
   void testLimitOrderClearsAskAtSamePrice() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 5;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
     int price = 120;
     int quantity = 2;
     for (int i = 0; i < 3; i++) {
@@ -325,7 +326,7 @@ public class OrderBookTest {
   void testLimitOrderClearsAskAtBetterPrice() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 5;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
     int price2 = 121;
     int quantity = 2;
     for (int i = 0; i < 2; i++) {
@@ -351,7 +352,7 @@ public class OrderBookTest {
   void testLimitOrderClearsMultipleAskLevels() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 5;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
     int quantity = 2;
     int[] askPrices = { 124, 125, 126 };
     int[] bidPrices = { 120, 121, 122 };
@@ -421,7 +422,7 @@ public class OrderBookTest {
   void testMarketOrderClearsSingleLimitLevel() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 5;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     int price = 120;
     int quantity = 2;
@@ -455,7 +456,7 @@ public class OrderBookTest {
   void testMarketOrderClearsMultipleLimitLevels() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 2;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     int[] prices = { 121, 122, 123, 124, 125 };
     int quantity = 3;
@@ -491,7 +492,7 @@ public class OrderBookTest {
   @Test
   @DisplayName("Order rejected when bid price falls outside price collar (too low)")
   void testBidRejectedOutsidePriceCollar() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Place initial bid and ask orders to establish market
     byte[] initialBid = OrderRequestDecoder.encode(0, 100, (short) 10, true, 1);
@@ -522,7 +523,7 @@ public class OrderBookTest {
   @Test
   @DisplayName("Order rejected when ask price falls outside price collar (too high)")
   void testAskRejectedOutsidePriceCollar() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Place initial bid and ask orders to establish market
     byte[] initialBid = OrderRequestDecoder.encode(0, 100, (short) 10, true, 1);
@@ -550,7 +551,7 @@ public class OrderBookTest {
   @Test
   @DisplayName("Orders are pruned and rejected when price collar moves significantly")
   void testOrdersPrunedWhenPriceCollarMoves() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Place initial market
     byte[] initialBid = OrderRequestDecoder.encode(0, 100, (short) 10, true, 1);

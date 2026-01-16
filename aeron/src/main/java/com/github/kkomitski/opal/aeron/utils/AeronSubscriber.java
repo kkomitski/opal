@@ -7,18 +7,18 @@ public class AeronSubscriber implements AutoCloseable {
     public static final String UDP_ENDPOINT_PROP = "opal.aeron.udp.sub.endpoint";
     public static final int DEFAULT_PORT = 42069;
 
-    protected final AeronMediaDriver mediaDriver;
+    protected final AttachAeronMediaDriver mediaDriver;
     protected final String transport;
     protected final int streamId;
     protected final int port;
     protected final String channel;
     protected final Subscription subscription;
 
-    public AeronSubscriber(final AeronMediaDriver mediaDriver, final String transport, final int streamId) {
+    public AeronSubscriber(final AttachAeronMediaDriver mediaDriver, final String transport, final int streamId) {
         this(mediaDriver, transport, streamId, DEFAULT_PORT);
     }
 
-    public AeronSubscriber(final AeronMediaDriver mediaDriver, final String transport, final int streamId,
+    public AeronSubscriber(final AttachAeronMediaDriver mediaDriver, final String transport, final int streamId,
             final int port) {
         if (mediaDriver == null) {
             throw new IllegalArgumentException("mediaDriver must not be null");

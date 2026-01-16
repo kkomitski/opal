@@ -11,15 +11,16 @@ public class EgressService {
 
   private final AeronPublisher publisher;
 
+  public EgressService() {
+    this.publisher = null;
+  }
+
   public EgressService(final AeronPublisher publisher) {
-    if (publisher == null) {
-      throw new IllegalArgumentException("publisher must not be null");
-    }
     this.publisher = publisher;
   }
 
   public void egress(final byte[] bytes, final int offset, final int length) {
-    if (bytes == null || length <= 0) {
+    if (publisher == null || bytes == null || length <= 0) {
       return;
     }
 
@@ -32,7 +33,7 @@ public class EgressService {
   }
 
   public void egress(final DirectBuffer buffer, final int offset, final int length) {
-    if (buffer == null || length <= 0) {
+    if (publisher == null || buffer == null || length <= 0) {
       return;
     }
 

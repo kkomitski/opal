@@ -6,14 +6,14 @@ TODO:
 
 package com.github.kkomitski.opal;
 
-import java.util.Iterator;
-import java.util.Map;
 import java.util.concurrent.Executors;
 
 import org.agrona.DirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
+import org.agrona.concurrent.EpochClock;
 import org.agrona.concurrent.UnsafeBuffer;
 
+import com.github.kkomitski.opal.helpers.OrderBookDump;
 import com.github.kkomitski.opal.orderbook.Limit;
 import com.github.kkomitski.opal.orderbook.LimitPool;
 import com.github.kkomitski.opal.orderbook.Order;
@@ -30,6 +30,8 @@ import it.unimi.dsi.fastutil.ints.IntComparators;
 import it.unimi.dsi.fastutil.ints.IntHeapPriorityQueue;
 
 public class OrderBook {
+  private final EpochClock epochClock;
+
   // Constants
   private final int MAX_LIMITS_PER_BOOK; // Price collar
   private static final int MAX_ORDERS_PER_CHUNK = 256;
@@ -59,16 +61,19 @@ public class OrderBook {
 
   // Reusable buffers for order request processing
   private OrderRequest orderRequestBuffer = new OrderRequest();
-  private final byte[] messageBuffer = new byte[MatchEventDecoder.SIZE];
+  private final byte[] matchEventBytes = new byte[MatchEventDecoder.SIZE];
+  private final UnsafeBuffer matchEventBuffer = new UnsafeBuffer(matchEventBytes);
 
   private static final int ticksToRender = 50_000;
 
   public OrderBook(String name, int instrumentIndex, int limitsPerBook, int ordersPerLimit,
-      EgressService egressService) {
+      EgressService egressService,
+      EpochClock epochClock) {
     this.instrumentIndex = instrumentIndex;
     this.name = name;
     this.MAX_LIMITS_PER_BOOK = limitsPerBook;
     this.egressService = egressService;
+    this.epochClock = epochClock;
 
     int chunksPerLimit = (int) Math.ceil((double) ordersPerLimit / MAX_ORDERS_PER_CHUNK);
     int chunkPoolSize = MAX_LIMITS_PER_BOOK * chunksPerLimit;
@@ -109,8 +114,9 @@ public class OrderBook {
       if (sequence % 100 == 0) {
         pruneStaleLevels(100);
       }
+
+      OrderBookDump.generateHtml(this, "orderbook-dump.html");
       if (sequence % ticksToRender == 0) {
-        // OrderBookDump.generateHtml(this, "orderbook-dump.html");
         // pruneStaleLevels(100);
       }
     });
@@ -272,9 +278,9 @@ public class OrderBook {
       boolean isLimit) {
     // Select the opposing book
     IntHeapPriorityQueue oppositePrices = isBid ? askPrices : bidPrices;
-    Map<Integer, Limit> oppositeLimits = isBid ? askLimits : bidLimits;
+    Int2ObjectHashMap<Limit> oppositeLimits = isBid ? askLimits : bidLimits;
 
-    final DirectBuffer takerBuffer = takerOrder == null ? null : takerOrder.buffer;
+    final boolean shouldEmit = takerOrder != null;
 
     // While we still have demand/supply and opposing orders exist
     while (remainingSize > 0 && !oppositePrices.isEmpty()) {
@@ -308,25 +314,30 @@ public class OrderBook {
         if (headOrder.size == remainingSize) {
           // Complete fill
           Order matchedOrder = bestOppositeLimit.removeOrder();
-          if (takerBuffer != null) {
+          if (shouldEmit) {
             MatchEventDecoder.encode(orderId,
                 matchedOrder.id,
                 matchPrice,
-                matchedOrder.size, System.currentTimeMillis(), messageBuffer);
+                matchedOrder.size,
+                epochClock.time(),
+                matchEventBuffer,
+                0);
 
-            egressService.egress(takerBuffer, 0, OrderRequest.REQUEST_SIZE);
+            egressService.egress(matchEventBuffer, 0, MatchEventDecoder.SIZE);
           }
           remainingSize = 0;
         } else if (headOrder.size > remainingSize) {
           // Partial fill (more supply/demand left on opposite side)
-          if (takerBuffer != null) {
-            // Partial fill (more supply/demand left on opposite side)
+          if (shouldEmit) {
             MatchEventDecoder.encode(orderId,
                 headOrder.id,
                 matchPrice,
-                remainingSize, System.currentTimeMillis(), messageBuffer);
+                remainingSize,
+                epochClock.time(),
+                matchEventBuffer,
+                0);
 
-            egressService.egress(takerBuffer, 0, OrderRequest.REQUEST_SIZE);
+            egressService.egress(matchEventBuffer, 0, MatchEventDecoder.SIZE);
           }
 
           bestOppositeLimit.partialFill(remainingSize);
@@ -334,12 +345,15 @@ public class OrderBook {
         } else { // headOrder.size < remainingSize
           Order matchedOrder = bestOppositeLimit.removeOrder();
 
-          if (takerBuffer != null) {
+          if (shouldEmit) {
             MatchEventDecoder.encode(orderId,
                 matchedOrder.id,
                 matchPrice,
-                matchedOrder.size, System.currentTimeMillis(), messageBuffer);
-            egressService.egress(takerBuffer, 0, OrderRequest.REQUEST_SIZE);
+                matchedOrder.size,
+                epochClock.time(),
+                matchEventBuffer,
+                0);
+            egressService.egress(matchEventBuffer, 0, MatchEventDecoder.SIZE);
           }
 
           remainingSize -= headOrder.size;
@@ -349,7 +363,7 @@ public class OrderBook {
       // Free up the limit entirely, remove price from queue
       if (bestOppositeLimit.getTotalVolume() == 0) {
         oppositePrices.dequeueInt();
-        oppositeLimits.remove(bestOppositePrice); // This could potentially trigger GC
+        oppositeLimits.remove(bestOppositePrice);
         limitPool.releaseLimit(bestOppositeLimit);
       }
     }
@@ -379,12 +393,12 @@ public class OrderBook {
     int collarMax = center + halfBook;
 
     // Prune bids outside collar
-    Iterator<Map.Entry<Integer, Limit>> bidIt = bidLimits.entrySet().iterator();
+    final Int2ObjectHashMap<Limit>.EntryIterator bidIt = bidLimits.entrySet().iterator();
     while (bidIt.hasNext()) {
-      Map.Entry<Integer, Limit> e = bidIt.next();
-      int price = e.getKey();
+      bidIt.next();
+      final int price = bidIt.getIntKey();
       if (price < collarMin || price > collarMax) {
-        Limit limit = e.getValue();
+        final Limit limit = bidIt.getValue();
         while (!limit.isEmpty()) {
           Order order = limit.removeOrder();
           orderRequestBuffer.setFromOrder(order, orderRequestBuffer, true, price, instrumentIndex);
@@ -398,12 +412,12 @@ public class OrderBook {
     }
 
     // Prune asks outside collar
-    Iterator<Map.Entry<Integer, Limit>> askIt = askLimits.entrySet().iterator();
+    final Int2ObjectHashMap<Limit>.EntryIterator askIt = askLimits.entrySet().iterator();
     while (askIt.hasNext()) {
-      Map.Entry<Integer, Limit> e = askIt.next();
-      int price = e.getKey();
+      askIt.next();
+      final int price = askIt.getIntKey();
       if (price < collarMin || price > collarMax) {
-        Limit limit = e.getValue();
+        final Limit limit = askIt.getValue();
         while (!limit.isEmpty()) {
           Order order = limit.removeOrder();
           orderRequestBuffer.setFromOrder(order, orderRequestBuffer, false, price, instrumentIndex);

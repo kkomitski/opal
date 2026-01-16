@@ -1,9 +1,39 @@
 package com.github.kkomitski.opal.utils;
 
+import java.nio.ByteOrder;
+
+import org.agrona.MutableDirectBuffer;
+
 public class MatchEventDecoder {
   // Field sizes (bytes): takerOrderId (4), makerOrderId (4), price (4), quantity
   // (4), timestamp (8)
   public static final int SIZE = 24;
+
+  public static final int TAKER_ORDER_ID_OFFSET = 0;
+  public static final int MAKER_ORDER_ID_OFFSET = 4;
+  public static final int PRICE_OFFSET = 8;
+  public static final int QUANTITY_OFFSET = 12;
+  public static final int TIMESTAMP_OFFSET = 16;
+
+  public static void encode(
+      final int takerOrderId,
+      final int makerOrderId,
+      final int price,
+      final int quantity,
+      final long timestamp,
+      final MutableDirectBuffer buffer,
+      final int offset) {
+
+    if (buffer == null) {
+      throw new IllegalArgumentException("buffer must not be null");
+    }
+
+    buffer.putInt(offset + TAKER_ORDER_ID_OFFSET, takerOrderId, ByteOrder.BIG_ENDIAN);
+    buffer.putInt(offset + MAKER_ORDER_ID_OFFSET, makerOrderId, ByteOrder.BIG_ENDIAN);
+    buffer.putInt(offset + PRICE_OFFSET, price, ByteOrder.BIG_ENDIAN);
+    buffer.putInt(offset + QUANTITY_OFFSET, quantity, ByteOrder.BIG_ENDIAN);
+    buffer.putLong(offset + TIMESTAMP_OFFSET, timestamp, ByteOrder.BIG_ENDIAN);
+  }
 
   public static byte[] encode(int takerOrderId, int makerOrderId, int price, int quantity, long timestamp,
       byte[] buffer) {
