@@ -104,14 +104,27 @@
 
         <!-- Aeron -->
         <dependency>
+            <groupId>com.github.kkomitski.opal</groupId>
+            <artifactId>aeron</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <!-- <dependency>
             <groupId>io.aeron</groupId>
             <artifactId>aeron-driver</artifactId>
             <version>1.46.7</version>
-        </dependency>
-        <dependency>
+        </dependency> -->
+        <!-- <dependency>
             <groupId>io.aeron</groupId>
             <artifactId>aeron-client</artifactId>
             <version>1.46.7</version>
+        </dependency> -->
+
+        <!-- OpenHFT Affinity -->
+        <dependency>
+            <groupId>net.openhft</groupId>
+            <artifactId>affinity</artifactId>
+            <version>3.23.3</version>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 
@@ -240,7 +253,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.0.0-M5</version>
                 <configuration>
-                    <argLine>--add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/java.util.zip=ALL-UNNAMED</argLine>
+                    <argLine>--add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens
+                        java.base/java.util.zip=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
         </plugins>

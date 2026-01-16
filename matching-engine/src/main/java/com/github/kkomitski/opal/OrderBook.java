@@ -18,6 +18,7 @@ import com.github.kkomitski.opal.orderbook.Limit;
 import com.github.kkomitski.opal.orderbook.LimitPool;
 import com.github.kkomitski.opal.orderbook.Order;
 import com.github.kkomitski.opal.orderbook.OrderRequest;
+import com.github.kkomitski.opal.services.messaging.MatchEventPublisher;
 import com.github.kkomitski.opal.utils.MatchEventDecoder;
 import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.RingBuffer;
@@ -54,6 +55,8 @@ public class OrderBook {
   private final LimitPool limitPool;
 
   private final byte[] messageBuffer = new byte[MatchEventDecoder.SIZE]; // exact message size TBC
+
+  private volatile MatchEventPublisher matchEventPublisher = MatchEventPublisher.noop();
 
   // Diagnostics
   private double disruptorUsage = 0;
@@ -122,6 +125,10 @@ public class OrderBook {
 
     this.disruptor.start();
     this.ringBuffer = disruptor.getRingBuffer();
+  }
+
+  public void setMatchEventPublisher(final MatchEventPublisher matchEventPublisher) {
+    this.matchEventPublisher = matchEventPublisher == null ? MatchEventPublisher.noop() : matchEventPublisher;
   }
 
   public void publishOrder(ByteBuf buf) {
@@ -313,18 +320,20 @@ public class OrderBook {
           MatchEventDecoder.encode(orderId,
               matchedOrder.id,
               matchPrice,
+              // TODO: Replace with Agrona timer
               matchedOrder.size, System.currentTimeMillis(), messageBuffer);
 
-          MessagingService.emitOrderMatch(messageBuffer);
+          matchEventPublisher.publishMatchEvent(messageBuffer);
           remainingSize = 0;
         } else if (headOrder.size > remainingSize) {
           // Partial fill (more supply/demand left on opposite side)
           MatchEventDecoder.encode(orderId,
               headOrder.id,
               matchPrice,
+              // TODO: Replace with Agrona timer
               remainingSize, System.currentTimeMillis(), messageBuffer);
 
-          MessagingService.emitOrderMatch(messageBuffer);
+          matchEventPublisher.publishMatchEvent(messageBuffer);
 
           bestOppositeLimit.partialFill(remainingSize);
           remainingSize = 0;
@@ -334,9 +343,10 @@ public class OrderBook {
           MatchEventDecoder.encode(orderId,
               matchedOrder.id,
               matchPrice,
+              // TODO: Replace with Agrona timer
               matchedOrder.size, System.currentTimeMillis(), messageBuffer);
 
-          MessagingService.emitOrderMatch(messageBuffer);
+          matchEventPublisher.publishMatchEvent(messageBuffer);
 
           remainingSize -= matchedOrder.size;
         }

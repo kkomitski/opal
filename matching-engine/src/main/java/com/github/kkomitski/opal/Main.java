@@ -2,8 +2,13 @@ package com.github.kkomitski.opal;
 
 import java.io.IOException;
 
+import com.github.kkomitski.opal.aeron.utils.AeronMediaDriver;
+import com.github.kkomitski.opal.aeron.utils.AeronPublisher;
+import com.github.kkomitski.opal.aeron.utils.AeronSubscriber;
 import com.github.kkomitski.opal.helpers.LoadOrderBooks;
-import com.github.kkomitski.opal.services.TCPServer;
+import com.github.kkomitski.opal.services.aeron.IngressService;
+import com.github.kkomitski.opal.services.messaging.AeronIpcMatchEventPublisher;
+import com.github.kkomitski.opal.services.messaging.MatchEventPublisher;
 
 import io.prometheus.client.exporter.HTTPServer;
 import io.prometheus.client.hotspot.DefaultExports;
@@ -31,29 +36,42 @@ public class Main {
         // LoadOrderBooks.fromXML("http://192.168.1.170:8080/markets");
         OrderBook[] orderBooks = LoadOrderBooks.fromXML("http://localhost:8080/markets");
 
-        System.out.println("Successfully loaded markets.xml");
+        System.out.println("Successfully loaded markets.xml (books=" + orderBooks.length + ")");
 
-        // UDP
-        // AeronService aeronService = new AeronService();
+        // Example DI wiring.
+        // External MediaDriver process must already be running against the same
+        // -Daeron.dir (or default).
+        try (AeronMediaDriver aeronMediaDriver = new AeronMediaDriver()) {
+            final AeronPublisher matchEventPublication = new AeronPublisher(aeronMediaDriver, "ipc", 2001);
+            final MatchEventPublisher matchEventPublisher = new AeronIpcMatchEventPublisher(matchEventPublication);
+
+            for (final OrderBook book : orderBooks) {
+                book.setMatchEventPublisher(matchEventPublisher);
+            }
+
+            final AeronSubscriber ingressSubscriber = new AeronSubscriber(aeronMediaDriver, "udp", 2001, 42069);
+            final IngressService aeronService = new IngressService(ingressSubscriber);
+            aeronService.subscribe(orderBooks);
+        }
 
         // try {
-        //     aeronService.subscribe(orderBooks);
+        // aeronService.subscribe(orderBooks);
         // } catch (Exception e) {
-        //     System.err.println("Failed to start server: " + e.getMessage());
-        //     e.printStackTrace();
-        //     System.exit(1);
+        // System.err.println("Failed to start server: " + e.getMessage());
+        // e.printStackTrace();
+        // System.exit(1);
         // }
 
         // TCP
-        TCPServer tcpServer = new TCPServer();
+        // TCPServer tcpServer = new TCPServer();
 
-        try {
-            tcpServer.startServer(orderBooks);
-        } catch (Exception e) {
-            System.err.println("Failed to start server: " + e.getMessage());
-            e.printStackTrace();
-            System.exit(1);
-        }
+        // try {
+        // tcpServer.startServer(orderBooks);
+        // } catch (Exception e) {
+        // System.err.println("Failed to start server: " + e.getMessage());
+        // e.printStackTrace();
+        // System.exit(1);
+        // }
 
         if (prometheusServer != null) {
             prometheusServer.close();

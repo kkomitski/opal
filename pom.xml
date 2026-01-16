@@ -13,6 +13,8 @@
     <description>Order Processing and Limit matching engine</description>
 
     <modules>
+        <module>aeron</module>
+        <module>messaging</module>
         <module>utils</module>
         <module>client</module>
         <module>matching-engine</module>
