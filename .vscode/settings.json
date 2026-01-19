@@ -1,3 +1,18 @@
 {
-  "java.configuration.updateBuildConfiguration": "automatic"
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.debug.settings.vmArgs": "--add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED --add-opens=java.base/java.util.zip=ALL-UNNAMED",
+  "java.test.config": [
+    {
+      "name": "Agrona/Aeron",
+      "vmArgs": [
+        "--add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED",
+        "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.zip=ALL-UNNAMED"
+      ]
+    }
+  ],
+  "cSpell.words": [
+    "orderbooks"
+  ],
+  "java.compile.nullAnalysis.mode": "automatic"
 }

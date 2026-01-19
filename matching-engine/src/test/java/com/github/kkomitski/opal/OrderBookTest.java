@@ -5,16 +5,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Field;
 
+import org.agrona.concurrent.SystemEpochClock;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import com.github.kkomitski.opal.utils.OrderRequestDecoder;
+import com.github.kkomitski.opal.services.EgressService;
 
 public class OrderBookTest {
+
+  private static final SystemEpochClock TEST_CLOCK = SystemEpochClock.INSTANCE;
+
+  private static final EgressService DUMMY_EGRESS_SERVICE = new EgressService();
+
   @Test
   @DisplayName("Limit order clears multiple bid limits across price levels")
   void testLimitOrderClearsMultipleBidLevels() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
     int quantity = 2;
     int[] bidPrices = { 120, 121, 122 };
     int[] askPrices = { 124, 125, 126 };
@@ -22,16 +28,14 @@ public class OrderBookTest {
     // Add 2 bid limit orders at each bid price
     for (int p : bidPrices) {
       for (int i = 0; i < 2; i++) {
-        byte[] bidOrder = OrderRequestDecoder.encode(0, p, (short) quantity, true, 900 + p * 10 + i);
-        book.publishOrder(bidOrder);
+        book.publishOrder(0, true, p, quantity, 900 + p * 10 + i);
       }
     }
     
     // Add 2 ask limit orders at each ask price
     for (int p : askPrices) {
       for (int i = 0; i < 2; i++) {
-        byte[] askOrder = OrderRequestDecoder.encode(0, p, (short) quantity, false, 800 + p * 10 + i);
-        book.publishOrder(askOrder);
+        book.publishOrder(0, false, p, quantity, 800 + p * 10 + i);
       }
     }
     
@@ -65,8 +69,7 @@ public class OrderBookTest {
     // Place an ask limit order at 120 with enough quantity to clear all bids at
     // 120, 121, 122
     int totalBidQty = bidPrices.length * 2 * quantity;
-    byte[] clearingAsk = OrderRequestDecoder.encode(0, 120, (short) totalBidQty, false, 1000);
-    book.publishOrder(clearingAsk);
+    book.publishOrder(0, false, 120, totalBidQty, 1000);
     Thread.sleep(300);
     for (int p : bidPrices) {
       com.github.kkomitski.opal.orderbook.Limit lim = bidLimits.get(p);
@@ -77,8 +80,7 @@ public class OrderBookTest {
     // Place a bid limit order at 126 with enough quantity to clear all asks at 124,
     // 125, 126
     int totalAskQty = askPrices.length * 2 * quantity;
-    byte[] clearingBid = OrderRequestDecoder.encode(0, 126, (short) totalAskQty, true, 1100);
-    book.publishOrder(clearingBid);
+    book.publishOrder(0, true, 126, totalAskQty, 1100);
     Thread.sleep(500);
     for (int p : askPrices) {
       com.github.kkomitski.opal.orderbook.Limit lim = askLimits.get(p);
@@ -93,7 +95,7 @@ public class OrderBookTest {
   void testOrderBookLimitAndOrderInitialization() throws Exception {
     int priceLevels = 7;
     int ordersPerLevel = 3;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Access bidLimits and askLimits via reflection
     Field bidLimitsField = OrderBook.class.getDeclaredField("bidLimits");
@@ -116,7 +118,7 @@ public class OrderBookTest {
   void testMultipleOrdersAtDifferentLevelsAndSides() throws Exception {
     int priceLevels = 5;
     int ordersPerLevel = 4;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Orders to add: (side, price, quantity, id)
     Object[][] orders = {
@@ -133,8 +135,7 @@ public class OrderBookTest {
       int price = (int) o[1];
       int quantity = (int) o[2];
       int id = (int) o[3];
-      byte[] orderBytes = OrderRequestDecoder.encode(0, price, (short) quantity, isBid, id);
-      book.publishOrder(orderBytes);
+      book.publishOrder(0, isBid, price, quantity, id);
     }
 
     // Wait for disruptor to process
@@ -191,17 +192,14 @@ public class OrderBookTest {
   @Test
   @DisplayName("Limit order is correctly added to bid limit and reflected in state")
   void testLimitOrderIsAddedToBidLimit() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Create a bid (buy) limit order
     int price = 101;
     int quantity = 10;
     boolean isBid = true;
     int orderId = 1;
-    byte[] orderBytes = OrderRequestDecoder.encode(
-        0, price, (short) quantity, isBid, orderId);
-
-    book.publishOrder(orderBytes);
+    book.publishOrder(0, isBid, price, quantity, orderId);
 
     // Wait briefly for the disruptor to process
     try {
@@ -224,17 +222,14 @@ public class OrderBookTest {
   @Test
   @DisplayName("Limit order is correctly added to ask limit and reflected in state")
   void testLimitOrderIsAddedToAskLimit() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Create an ask (sell) limit order
     int price = 102;
     int quantity = 7;
     boolean isBid = false;
     int orderId = 2;
-    byte[] orderBytes = OrderRequestDecoder.encode(
-        0, price, (short) quantity, isBid, orderId);
-
-    book.publishOrder(orderBytes);
+    book.publishOrder(0, isBid, price, quantity, orderId);
 
     // Wait briefly for the disruptor to process
     try {
@@ -257,16 +252,14 @@ public class OrderBookTest {
   @Test
   @DisplayName("Limit correctly enforces order capacity and tracks initialized orders")
   void testLimitOrderLimitCapacity() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     int price = 105;
     boolean isBid = true;
 
     // Fill the limit to capacity
     for (int i = 0; i < 2; i++) {
-      byte[] orderBytes = OrderRequestDecoder.encode(
-          0, price, (short) 1, isBid, i + 1);
-      book.publishOrder(orderBytes);
+      book.publishOrder(0, isBid, price, 1, i + 1);
     }
 
     // Wait briefly for the disruptor to process
@@ -292,17 +285,15 @@ public class OrderBookTest {
   void testLimitOrderClearsAskAtSamePrice() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 5;
-    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
     int price = 120;
     int quantity = 2;
     for (int i = 0; i < 3; i++) {
-      byte[] askOrder = OrderRequestDecoder.encode(0, price, (short) quantity, false, 100 + i);
-      book.publishOrder(askOrder);
+      book.publishOrder(0, false, price, quantity, 100 + i);
     }
     Thread.sleep(100);
     int totalQuantity = quantity * 3;
-    byte[] bidOrder = OrderRequestDecoder.encode(0, price, (short) totalQuantity, true, 200);
-    book.publishOrder(bidOrder);
+    book.publishOrder(0, true, price, totalQuantity, 200);
     Thread.sleep(200);
     Field askLimitsField = OrderBook.class.getDeclaredField("askLimits");
     askLimitsField.setAccessible(true);
@@ -319,16 +310,14 @@ public class OrderBookTest {
   void testLimitOrderClearsAskAtBetterPrice() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 5;
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
     int price2 = 121;
     int quantity = 2;
     for (int i = 0; i < 2; i++) {
-      byte[] askOrder = OrderRequestDecoder.encode(0, price2, (short) quantity, false, 300 + i);
-      book.publishOrder(askOrder);
+      book.publishOrder(0, false, price2, quantity, 300 + i);
     }
     Thread.sleep(100);
-    byte[] bidOrder2 = OrderRequestDecoder.encode(0, 123, (short) (quantity * 2), true, 400);
-    book.publishOrder(bidOrder2);
+    book.publishOrder(0, true, 123, quantity * 2, 400);
     Thread.sleep(200);
     Field askLimitsField = OrderBook.class.getDeclaredField("askLimits");
     askLimitsField.setAccessible(true);
@@ -345,20 +334,18 @@ public class OrderBookTest {
   void testLimitOrderClearsMultipleAskLevels() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 5;
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
     int quantity = 2;
     int[] askPrices = { 124, 125, 126 };
     int[] bidPrices = { 120, 121, 122 };
     for (int p : askPrices) {
       for (int i = 0; i < 2; i++) {
-        byte[] askOrder = OrderRequestDecoder.encode(0, p, (short) quantity, false, 500 + p * 10 + i);
-        book.publishOrder(askOrder);
+        book.publishOrder(0, false, p, quantity, 500 + p * 10 + i);
       }
     }
     for (int p : bidPrices) {
       for (int i = 0; i < 2; i++) {
-        byte[] bidOrderX = OrderRequestDecoder.encode(0, p, (short) quantity, true, 600 + p * 10 + i);
-        book.publishOrder(bidOrderX);
+        book.publishOrder(0, true, p, quantity, 600 + p * 10 + i);
       }
     }
     Thread.sleep(500);
@@ -387,8 +374,7 @@ public class OrderBookTest {
     // Place a bid limit order at 126 with enough quantity to clear all asks at 124,
     // 125, 126
     int totalAskQty = askPrices.length * 2 * quantity;
-    byte[] clearingBid = OrderRequestDecoder.encode(0, 126, (short) totalAskQty, true, 700);
-    book.publishOrder(clearingBid);
+    book.publishOrder(0, true, 126, totalAskQty, 700);
     Thread.sleep(300);
     for (int p : askPrices) {
       com.github.kkomitski.opal.orderbook.Limit lim = askLimits.get(p);
@@ -399,8 +385,7 @@ public class OrderBookTest {
     // Place an ask limit order at 120 with enough quantity to clear all bids at
     // 120, 121, 122
     int totalBidQty = bidPrices.length * 2 * quantity;
-    byte[] clearingAsk = OrderRequestDecoder.encode(0, 120, (short) totalBidQty, false, 800);
-    book.publishOrder(clearingAsk);
+    book.publishOrder(0, false, 120, totalBidQty, 800);
     Thread.sleep(500);
     for (int p : bidPrices) {
       com.github.kkomitski.opal.orderbook.Limit lim = bidLimits.get(p);
@@ -415,22 +400,20 @@ public class OrderBookTest {
   void testMarketOrderClearsSingleLimitLevel() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 5;
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     int price = 120;
     int quantity = 2;
     // Add 5 ask limit orders at the same price
     for (int i = 0; i < 5; i++) {
-      byte[] orderBytes = OrderRequestDecoder.encode(0, price, (short) quantity, false, i + 1);
-      book.publishOrder(orderBytes);
+      book.publishOrder(0, false, price, quantity, i + 1);
     }
     // Wait for orders to be processed
     Thread.sleep(200);
 
     // Place a market buy order with enough quantity to clear all 5 orders
     int totalQuantity = quantity * 5;
-    byte[] marketOrder = OrderRequestDecoder.encode(0, 0, (short) totalQuantity, true, 100);
-    book.publishOrder(marketOrder);
+    book.publishOrder(0, true, 0, totalQuantity, 100);
 
     Thread.sleep(300);
 
@@ -449,23 +432,21 @@ public class OrderBookTest {
   void testMarketOrderClearsMultipleLimitLevels() throws Exception {
     int priceLevels = 10;
     int ordersPerLevel = 2;
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, priceLevels, ordersPerLevel, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     int[] prices = { 121, 122, 123, 124, 125 };
     int quantity = 3;
     // Add 2 ask limit orders at each price level
     for (int p = 0; p < prices.length; p++) {
       for (int i = 0; i < 2; i++) {
-        byte[] orderBytes = OrderRequestDecoder.encode(0, prices[p], (short) quantity, false, p * 10 + i + 1);
-        book.publishOrder(orderBytes);
+        book.publishOrder(0, false, prices[p], quantity, p * 10 + i + 1);
       }
     }
     Thread.sleep(300);
 
     // Place a market buy order with enough quantity to clear all orders
     int totalQuantity = quantity * prices.length * 2;
-    byte[] marketOrder = OrderRequestDecoder.encode(0, 0, (short) totalQuantity, true, 200);
-    book.publishOrder(marketOrder);
+    book.publishOrder(0, true, 0, totalQuantity, 200);
 
     Thread.sleep(400);
 
@@ -485,13 +466,11 @@ public class OrderBookTest {
   @Test
   @DisplayName("Order rejected when bid price falls outside price collar (too low)")
   void testBidRejectedOutsidePriceCollar() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Place initial bid and ask orders to establish market
-    byte[] initialBid = OrderRequestDecoder.encode(0, 100, (short) 10, true, 1);
-    byte[] initialAsk = OrderRequestDecoder.encode(0, 102, (short) 10, false, 2);
-    book.publishOrder(initialBid);
-    book.publishOrder(initialAsk);
+    book.publishOrder(0, true, 100, 10, 1);
+    book.publishOrder(0, false, 102, 10, 2);
     Thread.sleep(100);
 
     // Average price is 101, collar is 1000/2 = 500 ticks on each side
@@ -499,8 +478,7 @@ public class OrderBookTest {
     // For this test, we'll place a very aggressive bid outside what would be reasonable
     // The collar allows 1000 limits, so with mid at 101, we can go from 101-500 to 101+500
     // Place a bid at a very low price outside the collar
-    byte[] outOfBandBid = OrderRequestDecoder.encode(0, -400, (short) 5, true, 3);
-    book.publishOrder(outOfBandBid);
+    book.publishOrder(0, true, -400, 5, 3);
     Thread.sleep(100);
 
     // The order should be rejected, so it should not appear in bidLimits
@@ -516,19 +494,16 @@ public class OrderBookTest {
   @Test
   @DisplayName("Order rejected when ask price falls outside price collar (too high)")
   void testAskRejectedOutsidePriceCollar() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Place initial bid and ask orders to establish market
-    byte[] initialBid = OrderRequestDecoder.encode(0, 100, (short) 10, true, 1);
-    byte[] initialAsk = OrderRequestDecoder.encode(0, 102, (short) 10, false, 2);
-    book.publishOrder(initialBid);
-    book.publishOrder(initialAsk);
+    book.publishOrder(0, true, 100, 10, 1);
+    book.publishOrder(0, false, 102, 10, 2);
     Thread.sleep(100);
 
     // Average price is 101, upper bound = 101 + 500 = 601
     // Place an ask at a price well above the collar
-    byte[] outOfBandAsk = OrderRequestDecoder.encode(0, 1000, (short) 5, false, 3);
-    book.publishOrder(outOfBandAsk);
+    book.publishOrder(0, false, 1000, 5, 3);
     Thread.sleep(100);
 
     // The order should be rejected, so it should not appear in askLimits
@@ -544,21 +519,17 @@ public class OrderBookTest {
   @Test
   @DisplayName("Orders are pruned and rejected when price collar moves significantly")
   void testOrdersPrunedWhenPriceCollarMoves() throws Exception {
-    OrderBook book = new OrderBook("TEST", 1, 1000, 10);
+    OrderBook book = new OrderBook("TEST", 1, 1000, 10, DUMMY_EGRESS_SERVICE, TEST_CLOCK);
 
     // Place initial market
-    byte[] initialBid = OrderRequestDecoder.encode(0, 100, (short) 10, true, 1);
-    byte[] initialAsk = OrderRequestDecoder.encode(0, 102, (short) 10, false, 2);
-    book.publishOrder(initialBid);
-    book.publishOrder(initialAsk);
+    book.publishOrder(0, true, 100, 10, 1);
+    book.publishOrder(0, false, 102, 10, 2);
     Thread.sleep(100);
 
     // Place orders at edges of current collar (avgPrice=101, collar=500)
     // Lower edge ~= 101-500 = -399, upper edge ~= 101+500 = 601
-    byte[] lowBid = OrderRequestDecoder.encode(0, 50, (short) 5, true, 10);
-    byte[] highAsk = OrderRequestDecoder.encode(0, 550, (short) 5, false, 11);
-    book.publishOrder(lowBid);
-    book.publishOrder(highAsk);
+    book.publishOrder(0, true, 50, 5, 10);
+    book.publishOrder(0, false, 550, 5, 11);
     Thread.sleep(100);
 
     // Verify orders are in the book
@@ -577,8 +548,7 @@ public class OrderBookTest {
 
     // Now place a large crossing order to move the market significantly
     // Place a big bid that will match asks and move the market up
-    byte[] largeBid = OrderRequestDecoder.encode(0, 550, (short) 100, true, 20);
-    book.publishOrder(largeBid);
+    book.publishOrder(0, true, 550, 100, 20);
     Thread.sleep(300); // Allow pruning to occur (every 100 sequences)
 
     // After pruning, the far orders should be removed

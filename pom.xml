@@ -13,10 +13,12 @@
     <description>Order Processing and Limit matching engine</description>
 
     <modules>
+        <module>server</module>
+        <module>aeron</module>
+        <module>messaging</module>
+        <module>matching-engine</module>
         <module>utils</module>
         <module>client</module>
-        <module>matching-engine</module>
-        <module>server</module>
     </modules>
 
     <properties>

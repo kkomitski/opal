@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import com.github.kkomitski.opal.orderbook.Limit;
 import com.github.kkomitski.opal.orderbook.LimitChunkPool;
 import com.github.kkomitski.opal.orderbook.OrderRequest;
-import com.github.kkomitski.opal.utils.OrderRequestDecoder;
 
 public class LimitTest {
 
@@ -22,7 +21,7 @@ public class LimitTest {
     // Add several orders to create multiple chunks
     for (int i = 0; i < 10; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(i, 100 + i, (short) 10, true, 10));
+      orderRequest.set(i, true, 100 + i, 10, 10);
       assertTrue(limit.addOrder(orderRequest), "Order should be added");
     }
 
@@ -39,7 +38,7 @@ public class LimitTest {
     // Add new orders after reset to ensure no contamination
     for (int i = 0; i < 5; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(i, 200 + i, (short) 5, true, 5));
+      orderRequest.set(i, true, 200 + i, 5, 5);
       assertTrue(limit.addOrder(orderRequest), "Order should be added after reset");
     }
     assertEquals(25, limit.getTotalVolume(), "Limit should correctly track new volume after reset");
@@ -50,7 +49,7 @@ public class LimitTest {
     LimitChunkPool chunkPool = new LimitChunkPool();
     Limit limit = new Limit(chunkPool);
     OrderRequest orderRequest = new OrderRequest();
-    orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 7, true, 1));
+    orderRequest.set(1, true, 100, 7, 1);
     assertTrue(limit.addOrder(orderRequest), "Order should be added");
     assertEquals(7, limit.getTotalVolume(), "Total volume should match order size");
     assertNotNull(limit.peek(), "Should be able to peek order");
@@ -61,7 +60,7 @@ public class LimitTest {
     LimitChunkPool chunkPool = new LimitChunkPool();
     Limit limit = new Limit(chunkPool);
     OrderRequest orderRequest = new OrderRequest();
-    orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 8, true, 2));
+    orderRequest.set(1, true, 100, 8, 2);
     assertTrue(limit.addOrder(orderRequest), "Order should be added");
     assertEquals(8, limit.getTotalVolume(), "Total volume should match order size");
     limit.removeOrder();
@@ -84,7 +83,7 @@ public class LimitTest {
     Limit limit = new Limit(chunkPool);
     limit.reset();
     OrderRequest orderRequest = new OrderRequest();
-    orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 9, true, 3));
+    orderRequest.set(1, true, 100, 9, 3);
     assertTrue(limit.addOrder(orderRequest), "Order should be added after reset");
     assertEquals(9, limit.getTotalVolume(), "Total volume should match order size after reset");
     assertNotNull(limit.peek(), "Should be able to peek order after reset");
@@ -97,7 +96,7 @@ public class LimitTest {
     int total = 0;
     for (int i = 0; i < 4; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(1, 100 + i, (short) (2 + i), true, i));
+      orderRequest.set(1, true, 100 + i, 2 + i, i);
       assertTrue(limit.addOrder(orderRequest));
       total += (2 + i);
     }
@@ -110,7 +109,7 @@ public class LimitTest {
     Limit limit = new Limit(chunkPool);
     for (int i = 0; i < 3; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 5, true, i));
+      orderRequest.set(1, true, 100, 5, i);
       limit.addOrder(orderRequest);
     }
     while (limit.peek() != null) {
@@ -125,7 +124,7 @@ public class LimitTest {
     LimitChunkPool chunkPool = new LimitChunkPool();
     Limit limit = new Limit(chunkPool);
     OrderRequest orderRequest = new OrderRequest();
-    orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 10, true, 1));
+    orderRequest.set(1, true, 100, 10, 1);
     limit.addOrder(orderRequest);
     limit.partialFill(4);
     assertEquals(4, limit.getTotalVolume(), "Total volume should reflect partial fill");
@@ -136,7 +135,7 @@ public class LimitTest {
     LimitChunkPool chunkPool = new LimitChunkPool();
     Limit limit = new Limit(chunkPool);
     OrderRequest orderRequest = new OrderRequest();
-    orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 6, true, 1));
+    orderRequest.set(1, true, 100, 6, 1);
     limit.addOrder(orderRequest);
     assertNotNull(limit.peek(), "Peek should return an order");
     assertEquals(6, limit.getTotalVolume(), "Volume should remain after peek");
@@ -148,12 +147,12 @@ public class LimitTest {
     LimitChunkPool chunkPool = new LimitChunkPool();
     Limit limit = new Limit(chunkPool);
     OrderRequest orderRequest1 = new OrderRequest();
-    orderRequest1.setBytes(OrderRequestDecoder.encode(1, 100, (short) 3, true, 1));
+    orderRequest1.set(1, true, 100, 3, 1);
     limit.addOrder(orderRequest1);
     limit.removeOrder();
     assertEquals(0, limit.getTotalVolume(), "Volume should be zero after remove");
     OrderRequest orderRequest2 = new OrderRequest();
-    orderRequest2.setBytes(OrderRequestDecoder.encode(1, 101, (short) 4, true, 2));
+    orderRequest2.set(1, true, 101, 4, 2);
     limit.addOrder(orderRequest2);
     assertEquals(4, limit.getTotalVolume(), "Volume should match new order after add");
     assertNotNull(limit.peek(), "Should be able to peek new order");
@@ -164,7 +163,7 @@ public class LimitTest {
     LimitChunkPool chunkPool = new LimitChunkPool();
     Limit limit = new Limit(chunkPool);
     OrderRequest orderRequest = new OrderRequest();
-    orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 12, true, 1));
+    orderRequest.set(1, true, 100, 12, 1);
     limit.addOrder(orderRequest);
     limit.partialFill(7);
     limit.reset();
@@ -179,7 +178,7 @@ public class LimitTest {
     for (int cycle = 0; cycle < 3; cycle++) {
       for (int i = 0; i < 2; i++) {
         OrderRequest orderRequest = new OrderRequest();
-        orderRequest.setBytes(OrderRequestDecoder.encode(1, 100 + i, (short) (2 + i), true, i));
+        orderRequest.set(1, true, 100 + i, 2 + i, i);
         limit.addOrder(orderRequest);
       }
       limit.reset();
@@ -197,7 +196,7 @@ public class LimitTest {
     int orderSize = 3;
     for (int i = 0; i < orderCount; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(1, 100 + i, (short) orderSize, true, i));
+      orderRequest.set(1, true, 100 + i, orderSize, i);
       assertTrue(limit.addOrder(orderRequest), "Order " + i + " should be added");
     }
     assertEquals(orderCount * orderSize, limit.getTotalVolume(), "Total volume should be correct across chunks");
@@ -213,7 +212,7 @@ public class LimitTest {
     int orderSize = 2;
     for (int i = 0; i < orderCount; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) orderSize, true, i));
+      orderRequest.set(1, true, 100, orderSize, i);
       limit.addOrder(orderRequest);
     }
     // Remove half of them
@@ -231,7 +230,7 @@ public class LimitTest {
     // Add 400 orders to create multiple chunks
     for (int i = 0; i < 400; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(1, 100 + i, (short) 5, true, i));
+      orderRequest.set(1, true, 100 + i, 5, i);
       limit.addOrder(orderRequest);
     }
     assertEquals(2000, limit.getTotalVolume(), "Volume should be correct before reset");
@@ -251,7 +250,7 @@ public class LimitTest {
     // Add 350 orders to create multiple chunks
     for (int i = 0; i < 350; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 4, true, i));
+      orderRequest.set(1, true, 100, 4, i);
       limit.addOrder(orderRequest);
     }
     
@@ -261,7 +260,7 @@ public class LimitTest {
     // Add new orders and verify clean state
     for (int i = 0; i < 10; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(1, 200, (short) 7, true, i));
+      orderRequest.set(1, true, 200, 7, i);
       assertTrue(limit.addOrder(orderRequest), "Order should be added after reset with previous chaining");
     }
     assertEquals(70, limit.getTotalVolume(), "Volume should match new orders after reset");
@@ -276,7 +275,7 @@ public class LimitTest {
       // Add 280 orders to trigger chaining
       for (int i = 0; i < 280; i++) {
         OrderRequest orderRequest = new OrderRequest();
-        orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 2, true, i));
+        orderRequest.set(1, true, 100, 2, i);
         limit.addOrder(orderRequest);
       }
       assertEquals(560, limit.getTotalVolume(), "Volume should be correct in cycle " + cycle);
@@ -296,7 +295,7 @@ public class LimitTest {
     // Add 270 orders to span multiple chunks
     for (int i = 0; i < 270; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(1, 100, (short) 3, true, i));
+      orderRequest.set(1, true, 100, 3, i);
       limit.addOrder(orderRequest);
     }
     
@@ -310,7 +309,7 @@ public class LimitTest {
     // Add more orders
     for (int i = 0; i < 50; i++) {
       OrderRequest orderRequest = new OrderRequest();
-      orderRequest.setBytes(OrderRequestDecoder.encode(1, 101, (short) 4, true, i + 270));
+      orderRequest.set(1, true, 101, 4, i + 270);
       limit.addOrder(orderRequest);
     }
     

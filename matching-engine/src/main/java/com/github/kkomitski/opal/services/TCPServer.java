@@ -16,6 +16,9 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.FixedLengthFrameDecoder;
 
+/**
+ * @deprecated in favour of UDP/Aeron
+ */
 public class TCPServer {
   private static final int PORT = 42069;
   private static final int BUFFER_SIZE = 65535;
@@ -72,8 +75,12 @@ public class TCPServer {
       try {
         // Read instrument index first to select the order book
         int instrumentIndex = buf.getShort(0) & 0x7FFF; // Assuming big-endian, adjust if needed
+        boolean isBid = (buf.getShort(0) & 0x8000) != 0;
+        int price = ((buf.getByte(2) & 0xFF) << 16) | ((buf.getByte(3) & 0xFF) << 8) | (buf.getByte(4) & 0xFF);
+        int quantity = ((buf.getByte(5) & 0xFF) << 8) | (buf.getByte(6) & 0xFF);
+        int orderId = ((buf.getByte(7) & 0xFF) << 24) | ((buf.getByte(8) & 0xFF) << 16) | ((buf.getByte(9) & 0xFF) << 8) | (buf.getByte(10) & 0xFF);
         if (instrumentIndex >= 0 && instrumentIndex < orderBooks.length) {
-          orderBooks[instrumentIndex].publishOrder(buf);
+          orderBooks[instrumentIndex].publishOrder(instrumentIndex, isBid, price, quantity, orderId);
         } else {
           System.err.println("Invalid instrument index: " + instrumentIndex);
         }

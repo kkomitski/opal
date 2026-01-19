@@ -78,7 +78,7 @@ public class LoadTestClient {
     private final AtomicLong bytesSent = new AtomicLong(0);
     private final AtomicInteger activeConnections = new AtomicInteger(0);
     private final Random random = new Random();
-    private final AtomicInteger orderSideToggle = new AtomicInteger(0);
+    // private final AtomicInteger orderSideToggle = new AtomicInteger(0);
 
     private Market[] markets = null;
     // Per-instrument max order quantity (set to ordersPerLimit / 2)

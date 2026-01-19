@@ -1,7 +1,8 @@
 package com.github.kkomitski.opal.utils;
 
 public class OrderRequestDecoder {
-  // TODO: Possible performance could be gained by going to a power of 2 - 12 or 16 bytes (needs testing)
+  // TODO: Possible performance could be gained by going to a power of 2
+  // to help fit better on the CPU architecture  - 12 or 16 bytes (needs testing)
   public static final int SIZE = 11;
 
   // Bit masks

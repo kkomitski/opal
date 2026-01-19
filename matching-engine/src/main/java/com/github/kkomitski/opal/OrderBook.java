@@ -6,29 +6,30 @@ TODO:
 
 package com.github.kkomitski.opal;
 
-import java.util.Iterator;
-import java.util.Map;
 import java.util.concurrent.Executors;
 
-import org.agrona.DirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
+import org.agrona.concurrent.EpochClock;
 import org.agrona.concurrent.UnsafeBuffer;
 
+import com.github.kkomitski.opal.helpers.OrderBookDump;
 import com.github.kkomitski.opal.orderbook.Limit;
 import com.github.kkomitski.opal.orderbook.LimitPool;
 import com.github.kkomitski.opal.orderbook.Order;
 import com.github.kkomitski.opal.orderbook.OrderRequest;
+import com.github.kkomitski.opal.services.EgressService;
 import com.github.kkomitski.opal.utils.MatchEventDecoder;
 import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 
-import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.ints.IntComparators;
 import it.unimi.dsi.fastutil.ints.IntHeapPriorityQueue;
 
 public class OrderBook {
+  private final EpochClock epochClock;
+
   // Constants
   private final int MAX_LIMITS_PER_BOOK; // Price collar
   private static final int MAX_ORDERS_PER_CHUNK = 256;
@@ -36,9 +37,6 @@ public class OrderBook {
   // Metadata
   private final String name;
   private final int instrumentIndex;
-  private boolean warned75 = false;
-  private boolean warned85 = false;
-  private boolean crashed95 = false;
 
   private final Disruptor<OrderRequest> disruptor;
   private final RingBuffer<OrderRequest> ringBuffer;
@@ -53,21 +51,27 @@ public class OrderBook {
   // 1000 chunks * 256 orders = 256,000 orders total across 300 levels
   private final LimitPool limitPool;
 
-  private final byte[] messageBuffer = new byte[MatchEventDecoder.SIZE]; // exact message size TBC
+  // Used to throw messages out of the orderbook to via IPC
+  private final EgressService egressService;
 
   // Diagnostics
   private double disruptorUsage = 0;
 
-  // private DirectBuffer orderToRequestBuffer = new UnsafeBuffer(new
-  // byte[OrderRequest.REQUEST_SIZE]);
+  // Reusable buffers for order request processing
   private OrderRequest orderRequestBuffer = new OrderRequest();
+  private final byte[] matchEventBytes = new byte[MatchEventDecoder.SIZE];
+  private final UnsafeBuffer matchEventBuffer = new UnsafeBuffer(matchEventBytes);
 
   private static final int ticksToRender = 50_000;
 
-  public OrderBook(String name, int instrumentIndex, int limitsPerBook, int ordersPerLimit) {
+  public OrderBook(String name, int instrumentIndex, int limitsPerBook, int ordersPerLimit,
+      EgressService egressService,
+      EpochClock epochClock) {
     this.instrumentIndex = instrumentIndex;
     this.name = name;
     this.MAX_LIMITS_PER_BOOK = limitsPerBook;
+    this.egressService = egressService;
+    this.epochClock = epochClock;
 
     int chunksPerLimit = (int) Math.ceil((double) ordersPerLimit / MAX_ORDERS_PER_CHUNK);
     int chunkPoolSize = MAX_LIMITS_PER_BOOK * chunksPerLimit;
@@ -81,10 +85,6 @@ public class OrderBook {
     this.bidPrices = new IntHeapPriorityQueue(MAX_LIMITS_PER_BOOK / 2, IntComparators.OPPOSITE_COMPARATOR);
     this.askPrices = new IntHeapPriorityQueue(MAX_LIMITS_PER_BOOK / 2);
 
-    // this.disruptor = new Disruptor<OrderRequest>(
-    // OrderRequest::new,
-    // RING_BUFFER_SIZE,
-    // Executors.defaultThreadFactory());
     this.disruptor = new Disruptor<OrderRequest>(
         OrderRequest::new,
         RING_BUFFER_SIZE,
@@ -92,10 +92,8 @@ public class OrderBook {
         ProducerType.MULTI,
         new BlockingWaitStrategy());
 
-    // Add event handler to process orders
+    // Process orders
     this.disruptor.handleEventsWith((order, sequence, endOfBatch) -> {
-      // checkBuffer(sequence);
-
       int price = order.getPrice();
       int quantity = order.getQuantity();
       boolean isMarket = price == 0;
@@ -114,8 +112,9 @@ public class OrderBook {
       if (sequence % 100 == 0) {
         pruneStaleLevels(100);
       }
+
+      OrderBookDump.generateHtml(this, "orderbook-dump.html");
       if (sequence % ticksToRender == 0) {
-        // OrderBookDump.generateHtml(this, "orderbook-dump.html");
         // pruneStaleLevels(100);
       }
     });
@@ -124,33 +123,12 @@ public class OrderBook {
     this.ringBuffer = disruptor.getRingBuffer();
   }
 
-  public void publishOrder(ByteBuf buf) {
-    long sequence = ringBuffer.next();
+  public void publishOrder(final int instrumentIndex, final boolean isBid, final int price, final int quantity,
+      final int orderId) {
+    final long sequence = ringBuffer.next();
     try {
-      OrderRequest orderRequestSlot = ringBuffer.get(sequence);
-      byte[] unboxedBytes = ((UnsafeBuffer) orderRequestSlot.buffer).byteArray();
-      buf.getBytes(0, unboxedBytes, 0, OrderRequest.REQUEST_SIZE);
-    } finally {
-      ringBuffer.publish(sequence);
-    }
-  }
-
-  public void publishOrder(DirectBuffer buffer, int offset) {
-    long sequence = ringBuffer.next();
-    try {
-      OrderRequest orderRequestSlot = ringBuffer.get(sequence);
-      byte[] unboxedBytes = ((UnsafeBuffer) orderRequestSlot.buffer).byteArray();
-      buffer.getBytes(offset, unboxedBytes, 0, OrderRequest.REQUEST_SIZE);
-    } finally {
-      ringBuffer.publish(sequence);
-    }
-  }
-
-  public void publishOrder(byte[] orderBytes) {
-    long sequence = ringBuffer.next();
-    try {
-      OrderRequest event = ringBuffer.get(sequence);
-      event.setBytes(orderBytes);
+      final OrderRequest slot = ringBuffer.get(sequence);
+      slot.set(instrumentIndex, isBid, price, quantity, orderId);
     } finally {
       ringBuffer.publish(sequence);
     }
@@ -184,7 +162,7 @@ public class OrderBook {
     int size = order.getQuantity();
     int orderId = order.getId();
 
-    int remainingSize = MatchOrder(size, 0, orderId, isBid, false);
+    int remainingSize = MatchOrder(order, size, 0, orderId, isBid, false);
 
     if (remainingSize > 0) {
       // Maybe emit a message?
@@ -224,7 +202,7 @@ public class OrderBook {
       // Reject bid orders that are too cheap - ie outside of the price collar
       int bidPrice = orderPrice;
       int size = order.getQuantity();
-      int remainingSize = MatchOrder(size, bidPrice, orderId, true, true);
+      int remainingSize = MatchOrder(order, size, bidPrice, orderId, true, true);
 
       // Still some remaining demand that cannot be met - add to the orderbook
       if (remainingSize > 0) {
@@ -250,7 +228,7 @@ public class OrderBook {
       int askPrice = orderPrice;
       int size = order.getQuantity();
 
-      int remainingSize = MatchOrder(size, askPrice, orderId, false, true);
+      int remainingSize = MatchOrder(order, size, askPrice, orderId, false, true);
 
       // Still some remaining supply that cannot be met - add to the orderbook
       if (remainingSize > 0) {
@@ -273,10 +251,13 @@ public class OrderBook {
 
   }
 
-  private int MatchOrder(int remainingSize, int price, int orderId, boolean isBid, boolean isLimit) {
+  private int MatchOrder(final OrderRequest takerOrder, int remainingSize, int price, int orderId, boolean isBid,
+      boolean isLimit) {
     // Select the opposing book
     IntHeapPriorityQueue oppositePrices = isBid ? askPrices : bidPrices;
-    Map<Integer, Limit> oppositeLimits = isBid ? askLimits : bidLimits;
+    Int2ObjectHashMap<Limit> oppositeLimits = isBid ? askLimits : bidLimits;
+
+    final boolean shouldEmit = takerOrder != null;
 
     // While we still have demand/supply and opposing orders exist
     while (remainingSize > 0 && !oppositePrices.isEmpty()) {
@@ -301,51 +282,65 @@ public class OrderBook {
       // Match against orders at this price level
       while (remainingSize > 0 && bestOppositeLimit.getTotalVolume() > 0) {
         Order headOrder = bestOppositeLimit.peek();
-        if (headOrder == null)
-          break;
 
         int matchPrice = isBid ? bestOppositePrice : bestOppositePrice;
+
+        if (headOrder == null)
+          break;
 
         if (headOrder.size == remainingSize) {
           // Complete fill
           Order matchedOrder = bestOppositeLimit.removeOrder();
+          if (shouldEmit) {
+            MatchEventDecoder.encode(orderId,
+                matchedOrder.id,
+                matchPrice,
+                matchedOrder.size,
+                epochClock.time(),
+                matchEventBuffer,
+                0);
 
-          MatchEventDecoder.encode(orderId,
-              matchedOrder.id,
-              matchPrice,
-              matchedOrder.size, System.currentTimeMillis(), messageBuffer);
-
-          MessagingService.emitOrderMatch(messageBuffer);
+            egressService.egress(matchEventBuffer, 0, MatchEventDecoder.SIZE);
+          }
           remainingSize = 0;
         } else if (headOrder.size > remainingSize) {
           // Partial fill (more supply/demand left on opposite side)
-          MatchEventDecoder.encode(orderId,
-              headOrder.id,
-              matchPrice,
-              remainingSize, System.currentTimeMillis(), messageBuffer);
+          if (shouldEmit) {
+            MatchEventDecoder.encode(orderId,
+                headOrder.id,
+                matchPrice,
+                remainingSize,
+                epochClock.time(),
+                matchEventBuffer,
+                0);
 
-          MessagingService.emitOrderMatch(messageBuffer);
+            egressService.egress(matchEventBuffer, 0, MatchEventDecoder.SIZE);
+          }
 
           bestOppositeLimit.partialFill(remainingSize);
           remainingSize = 0;
         } else { // headOrder.size < remainingSize
           Order matchedOrder = bestOppositeLimit.removeOrder();
 
-          MatchEventDecoder.encode(orderId,
-              matchedOrder.id,
-              matchPrice,
-              matchedOrder.size, System.currentTimeMillis(), messageBuffer);
+          if (shouldEmit) {
+            MatchEventDecoder.encode(orderId,
+                matchedOrder.id,
+                matchPrice,
+                matchedOrder.size,
+                epochClock.time(),
+                matchEventBuffer,
+                0);
+            egressService.egress(matchEventBuffer, 0, MatchEventDecoder.SIZE);
+          }
 
-          MessagingService.emitOrderMatch(messageBuffer);
-
-          remainingSize -= matchedOrder.size;
+          remainingSize -= headOrder.size;
         }
       }
 
       // Free up the limit entirely, remove price from queue
       if (bestOppositeLimit.getTotalVolume() == 0) {
         oppositePrices.dequeueInt();
-        oppositeLimits.remove(bestOppositePrice); // This could potentially trigger GC
+        oppositeLimits.remove(bestOppositePrice);
         limitPool.releaseLimit(bestOppositeLimit);
       }
     }
@@ -353,6 +348,7 @@ public class OrderBook {
     return remainingSize;
   }
 
+  // TODO: This can be improved
   private void pruneStaleLevels(int ticksBuffer) {
     // Always prune based on the current valid collar, regardless of book state
     // Center collar around the midpoint of best bid/ask if available, else use
@@ -374,15 +370,15 @@ public class OrderBook {
     int collarMax = center + halfBook;
 
     // Prune bids outside collar
-    Iterator<Map.Entry<Integer, Limit>> bidIt = bidLimits.entrySet().iterator();
+    final Int2ObjectHashMap<Limit>.EntryIterator bidIt = bidLimits.entrySet().iterator();
     while (bidIt.hasNext()) {
-      Map.Entry<Integer, Limit> e = bidIt.next();
-      int price = e.getKey();
+      bidIt.next();
+      final int price = bidIt.getIntKey();
       if (price < collarMin || price > collarMax) {
-        Limit limit = e.getValue();
+        final Limit limit = bidIt.getValue();
         while (!limit.isEmpty()) {
           Order order = limit.removeOrder();
-          orderRequestBuffer.setFromOrder(order, orderRequestBuffer, true, price, instrumentIndex);
+          orderRequestBuffer.setFromOrder(order, true, price, instrumentIndex);
           RejectOrder(orderRequestBuffer, OrderRequest.RejectionReason.AVG_PRICE_MOVED_TOO_FAR);
         }
         bidIt.remove();
@@ -393,15 +389,15 @@ public class OrderBook {
     }
 
     // Prune asks outside collar
-    Iterator<Map.Entry<Integer, Limit>> askIt = askLimits.entrySet().iterator();
+    final Int2ObjectHashMap<Limit>.EntryIterator askIt = askLimits.entrySet().iterator();
     while (askIt.hasNext()) {
-      Map.Entry<Integer, Limit> e = askIt.next();
-      int price = e.getKey();
+      askIt.next();
+      final int price = askIt.getIntKey();
       if (price < collarMin || price > collarMax) {
-        Limit limit = e.getValue();
+        final Limit limit = askIt.getValue();
         while (!limit.isEmpty()) {
           Order order = limit.removeOrder();
-          orderRequestBuffer.setFromOrder(order, orderRequestBuffer, false, price, instrumentIndex);
+          orderRequestBuffer.setFromOrder(order, false, price, instrumentIndex);
           RejectOrder(orderRequestBuffer, OrderRequest.RejectionReason.AVG_PRICE_MOVED_TOO_FAR);
         }
         askIt.remove();
@@ -424,41 +420,7 @@ public class OrderBook {
     disruptor.shutdown();
   }
 
-  public void checkBuffer(long sequence) {
-    if (sequence % 10_000 == 0) { // Check every 100 orders to reduce overhead
-      long remaining = disruptor.getRingBuffer().remainingCapacity();
-      long used = RING_BUFFER_SIZE - remaining;
-      double usage = (double) used / RING_BUFFER_SIZE;
-
-      disruptorUsage = usage;
-
-      // OrderBookDump.generateHtml(this, "orderbook-dump.html");
-
-      if (usage >= 0.95 && !crashed95) {
-        System.err.println("\u001B[31mCRITICAL: Disruptor buffer over 95% full! Crashing...\u001B[0m");
-        crashed95 = true;
-        throw new IllegalStateException("Disruptor buffer over 95% full!");
-      } else if (usage >= 0.85 && !warned85) {
-        System.out.println("\u001B[33mWARNING: Disruptor buffer is over 85% full!\u001B[0m");
-        warned85 = true;
-      } else if (usage < 0.85 && warned85) {
-        System.out.println("\u001B[32mINFO: Disruptor buffer usage dropped below 85%.\u001B[0m");
-        warned85 = false;
-        crashed95 = false;
-      }
-
-      if (usage >= 0.75 && !warned75) {
-        System.out.println("\u001B[34mNOTICE: Disruptor buffer is over 75% full!\u001B[0m");
-        warned75 = true;
-      } else if (usage < 0.75 && warned75) {
-        System.out.println("\u001B[36mINFO: Disruptor buffer usage dropped below 75%.\u001B[0m");
-        warned75 = false;
-      }
-    }
-  }
-
   // --- Getters for OrderBookDump ---
-
   public String getName() {
     return name;
   }

@@ -19,6 +19,13 @@
             <artifactId>utils</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
+
+        <!-- Aeron Module (IPC/UDP utils) -->
+        <dependency>
+            <groupId>com.github.kkomitski.opal</groupId>
+            <artifactId>aeron</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
         
         <!-- Netty -->
         <!-- Netty -->
